@@ -4,6 +4,8 @@ import math
 
 import numpy as np
 import pytest
+from scipy import stats
+
 from baldr.numpy import (
     Beta,
     DiscreteUniform,
@@ -14,7 +16,6 @@ from baldr.numpy import (
     TruncatedSine,
     Uniform,
 )
-from scipy import stats
 
 
 @pytest.mark.parametrize(
