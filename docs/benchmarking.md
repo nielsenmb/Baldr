@@ -38,13 +38,13 @@ Run the suite with:
 
 ```bash
 python -m pip install -e ".[benchmark]"
-python -m benchmarks --dtype float64 --output benchmark.json
+python -m baldr.benchmarks --dtype float64 --output benchmark.json
 ```
 
 For a quick smoke run:
 
 ```bash
-python -m benchmarks --sizes 1,8 --repeat 2 --number 10
+python -m baldr.benchmarks --sizes 1,8 --repeat 2 --number 10
 ```
 
 The JSON output records Python, platform, package versions, timing parameters,
