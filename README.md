@@ -20,20 +20,23 @@ the hot path can then remain small.
 
 ## Status
 
-Baldr is in its benchmark and API-design phase. The dependency-free scalar
-backend is available experimentally:
+Baldr is in its benchmark and API-design phase. Scalar and NumPy backends are
+available through the experimental public constructors:
 
 ```python
-from baldr.scalar import Normal
+from baldr import Normal
 
-prior = Normal(loc=0.0, scale=1.0)
-x = prior.ppf(0.95)
-log_density = prior.logpdf(x)
+scalar_prior = Normal(loc=0.0, scale=1.0)
+array_prior = Normal(loc=0.0, scale=1.0, backend="numpy")
+
+x = scalar_prior.ppf(0.95)
+log_density = array_prior.logpdf([x, 0.0])
 ```
 
-Scalar classes validate their parameters during construction, not during
-repeated density evaluations. They accept Python scalar values only; NumPy
-broadcasting and the backend-selecting public API will follow in PR 3.
+Backend selection happens once during construction, so repeated evaluations do
+not pay for a backend branch. The scalar backend remains dependency-free. Install
+`baldr[numpy]` for broadcasting over NumPy arrays; SciPy supplies the special
+functions that NumPy itself does not provide.
 
 The first benchmark uses the Normal log-PDF as a control and separates
 construction, first-call or compilation, and warm-call timings. See

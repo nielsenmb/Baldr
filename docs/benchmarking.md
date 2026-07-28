@@ -10,6 +10,7 @@ The first benchmark asks how Normal log-PDF evaluation behaves across:
 
 - dependency-free scalar Python, both as a direct function and a frozen Baldr object;
 - hand-written NumPy;
+- Baldr's public NumPy distribution object;
 - NumPy with `scipy.special`;
 - a frozen `scipy.stats` distribution;
 - eager and JIT-compiled JAX;

@@ -8,5 +8,28 @@ except PackageNotFoundError:
     __version__ = "0.1.0.dev0"
 
 from baldr import scalar
+from baldr.distributions import (
+    Backend,
+    Beta,
+    DiscreteUniform,
+    Exponential,
+    Normal,
+    TruncatedNormal,
+    TruncatedPowerLaw,
+    TruncatedSine,
+    Uniform,
+)
 
-__all__ = ["__version__", "scalar"]
+__all__ = [
+    "Backend",
+    "Beta",
+    "DiscreteUniform",
+    "Exponential",
+    "Normal",
+    "TruncatedNormal",
+    "TruncatedPowerLaw",
+    "TruncatedSine",
+    "Uniform",
+    "__version__",
+    "scalar",
+]
