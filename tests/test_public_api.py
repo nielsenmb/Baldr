@@ -25,9 +25,8 @@ def test_importing_baldr_does_not_import_numpy(monkeypatch):
 
 
 def test_public_api_selects_backend_once():
-    from baldr.numpy import Normal as NumPyNormal
-
     import baldr
+    from baldr.numpy import Normal as NumPyNormal
     from baldr.scalar import Normal as ScalarNormal
 
     assert isinstance(baldr.Normal(), ScalarNormal)
