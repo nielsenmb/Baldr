@@ -31,6 +31,10 @@ The scalar backend is available experimentally as :mod:`baldr.scalar`.
 - Measure object, closure, and direct-function overhead before fixing the API.
 - Add numerical cross-checks against SciPy and array-shape tests.
 
+The NumPy backend is available experimentally as :mod:`baldr.numpy`. Public
+constructors select the scalar or NumPy backend once, when the distribution is
+created.
+
 ## PR 4 — Optional JAX backend
 
 - Add traceable kernels without method-level JIT by default.
