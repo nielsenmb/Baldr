@@ -54,6 +54,12 @@ def _scalar_factory() -> Callable[[float], float]:
     return scalar_normal_logpdf
 
 
+def _baldr_scalar_factory() -> Callable[[float], float]:
+    from baldr.scalar import Normal
+
+    return Normal().logpdf
+
+
 def _numpy_factory() -> Callable[[Any], Any]:
     import numpy as np
 
@@ -140,6 +146,13 @@ IMPLEMENTATIONS = (
         "python_math",
         "scalar",
         _scalar_factory,
+        supports_scalar=True,
+        supports_array=False,
+    ),
+    BenchmarkImplementation(
+        "baldr_scalar",
+        "scalar",
+        _baldr_scalar_factory,
         supports_scalar=True,
         supports_array=False,
     ),
