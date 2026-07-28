@@ -4,11 +4,11 @@ import math
 
 import pytest
 
-from benchmarks.implementations import (
+from baldr.benchmarks.implementations import (
     BenchmarkImplementation,
     scalar_normal_logpdf,
 )
-from benchmarks.runner import benchmark
+from baldr.benchmarks.runner import benchmark
 
 
 def test_scalar_normal_logpdf_matches_definition() -> None:
