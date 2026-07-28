@@ -60,6 +60,18 @@ def _baldr_scalar_factory() -> Callable[[float], float]:
     return Normal().logpdf
 
 
+def _baldr_jax_factory() -> Callable[[Any], Any]:
+    from baldr import Normal
+
+    return Normal(backend="jax").logpdf
+
+
+def _baldr_jax_jit_factory() -> Callable[[Any], Any]:
+    import jax
+
+    return jax.jit(_baldr_jax_factory())
+
+
 def _baldr_numpy_factory() -> Callable[[Any], Any]:
     from baldr import Normal
 
@@ -205,6 +217,22 @@ IMPLEMENTATIONS = (
         "jax_jit",
         "jax",
         _jax_jit_factory,
+        supports_scalar=True,
+        supports_array=True,
+        asynchronous=True,
+    ),
+    BenchmarkImplementation(
+        "baldr_jax",
+        "jax",
+        _baldr_jax_factory,
+        supports_scalar=True,
+        supports_array=True,
+        asynchronous=True,
+    ),
+    BenchmarkImplementation(
+        "baldr_jax_jit",
+        "jax",
+        _baldr_jax_jit_factory,
         supports_scalar=True,
         supports_array=True,
         asynchronous=True,

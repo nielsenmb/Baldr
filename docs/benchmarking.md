@@ -14,6 +14,7 @@ The first benchmark asks how Normal log-PDF evaluation behaves across:
 - NumPy with `scipy.special`;
 - a frozen `scipy.stats` distribution;
 - eager and JIT-compiled JAX;
+- Baldr's eager and externally JIT-compiled JAX Normal methods;
 - `jax.scipy.stats`;
 - SciPy's newer distribution API when the installed version provides it;
 - NumPyro with argument validation disabled; and
@@ -48,6 +49,13 @@ For a quick smoke run:
 python -m baldr.benchmarks --sizes 1,8 --repeat 2 --number 10
 ```
 
+To compare eager execution, individually JIT-compiled methods, and a fused
+24-parameter JAX prior transform:
+
+```bash
+python -m baldr.benchmarks --prior-transform --dimensions 24
+```
+
 The JSON output records Python, platform, package versions, timing parameters,
 results, and skipped optional implementations. Benchmark outputs should not be
 committed as universal performance claims: hardware and package versions are
@@ -64,3 +72,6 @@ part of every result.
 - Backend selection should occur during distribution construction, not inside
   each hot-path method, unless measurements show the dispatch cost is
   negligible.
+- Treat method-level JIT and whole-transform JIT as different execution models;
+  the former introduces a Python dispatch and compiled-kernel boundary for each
+  distribution call.
