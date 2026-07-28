@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "baldr"
+version = "0.1.0.dev0"
+description = "Fast probability distributions for sampling and inference"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Martin Nielsen" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.optional-dependencies]
+benchmark = ["distrax", "jax", "numpy", "numpyro", "scipy"]
+test = ["pytest>=8"]
+dev = ["baldr[benchmark,test]", "ruff>=0.9"]
+
+[project.urls]
+Homepage = "https://github.com/nielsenmb/Baldr"
+Repository = "https://github.com/nielsenmb/Baldr"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/baldr"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
