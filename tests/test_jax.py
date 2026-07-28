@@ -34,6 +34,11 @@ jax.config.update("jax_enable_x64", True)
             [-1.0, 0.0, 1.0, 5.0],
         ),
         (
+            baldr_jax.Gamma(2.5, -1.0, 3.0),
+            stats.gamma(2.5, loc=-1.0, scale=3.0),
+            [-2.0, -1.0, 0.0, 5.0],
+        ),
+        (
             baldr_jax.TruncatedNormal(0.0, 1.5, -1.0, 2.0),
             stats.truncnorm(-1.0 / 1.5, 2.0 / 1.5, 0.0, 1.5),
             [-2.0, -1.0, 0.0, 2.0],
@@ -60,6 +65,7 @@ def test_continuous_distributions_match_scipy(distribution, reference, points):
         baldr_jax.Uniform(),
         baldr_jax.Beta(2.0, 3.0),
         baldr_jax.Exponential(),
+        baldr_jax.Gamma(2.5),
         baldr_jax.TruncatedNormal(0.0, 1.0, -1.0, 1.0),
         baldr_jax.TruncatedPowerLaw(2.35, 0.1, 10.0),
         baldr_jax.TruncatedPowerLaw(1.0, 0.1, 10.0),

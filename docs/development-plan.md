@@ -53,6 +53,11 @@ compiled.
 - Add compatibility guidance and update PBjam and AsteroScale consumers in
   separate downstream PRs.
 
+Gamma is implemented by all three backends. The backend-neutral
+`CallableDistribution` wrapper preserves supplied callables without estimating
+moments during construction. Downstream package changes remain separate so
+Baldr can be reviewed and released independently.
+
 ## PR 6 — Empirical distributions and release hardening
 
 - Add KDE/interpolated distributions as an optional component.

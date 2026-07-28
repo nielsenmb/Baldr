@@ -8,12 +8,14 @@ from baldr.scalar import (
     Beta,
     DiscreteUniform,
     Exponential,
+    Gamma,
     Normal,
     TruncatedNormal,
     TruncatedPowerLaw,
     TruncatedSine,
     Uniform,
     beta,
+    gamma,
     normal,
     randint,
     truncsine,
@@ -28,6 +30,7 @@ from baldr.scalar import (
         (Uniform(loc=-2.0, scale=5.0), (0.0, 0.1, 0.5, 0.9, 1.0)),
         (Beta(a=0.4, b=3.2, loc=-1.0, scale=4.0), (1e-4, 0.01, 0.5, 0.99)),
         (Exponential(scale=2.5), (0.0, 0.1, 0.5, 0.99)),
+        (Gamma(a=2.5, loc=-1.0, scale=3.0), (0.0, 0.01, 0.5, 0.99)),
         (
             TruncatedNormal(loc=0.5, scale=1.2, low=-1.0, high=2.0),
             (0.0, 0.01, 0.5, 0.99, 1.0),
@@ -60,6 +63,7 @@ def test_normal_matches_definition() -> None:
         (Uniform(loc=1.0, scale=2.0), 0.99, 3.01),
         (Beta(a=2.0, b=3.0, loc=1.0, scale=2.0), 0.99, 3.01),
         (Exponential(), -0.01, math.inf),
+        (Gamma(a=2.0, loc=1.0), 0.99, math.inf),
         (TruncatedNormal(0.0, 1.0, -1.0, 1.0), -1.01, 1.01),
         (TruncatedPowerLaw(2.0, 1.0, 4.0), 0.99, 4.01),
         (TruncatedSine(), -0.01, math.pi / 2.0 + 0.01),
@@ -85,6 +89,14 @@ def test_beta_known_cases_and_boundaries() -> None:
     singular = Beta(a=0.5, b=2.0)
     assert singular.pdf(0.0) == math.inf
     assert singular.pdf(1.0) == 0.0
+
+
+def test_gamma_known_cases_and_boundaries() -> None:
+    distribution = Gamma(a=2.0, loc=1.0, scale=3.0)
+    assert distribution.pdf(1.0) == 0.0
+    assert distribution.pdf(4.0) == pytest.approx(math.exp(-1.0) / 3.0)
+    assert distribution.cdf(4.0) == pytest.approx(1.0 - 2.0 / math.e)
+    assert distribution.mean == 7.0
 
 
 def test_truncated_normal_is_renormalized() -> None:
@@ -122,6 +134,7 @@ def test_discrete_uniform_corrects_pbjam_logpdf_bug() -> None:
         lambda: Beta(a=0.0),
         lambda: Beta(b=-1.0),
         lambda: Exponential(scale=math.inf),
+        lambda: Gamma(a=0.0),
         lambda: TruncatedNormal(0.0, 1.0, 2.0, 1.0),
         lambda: TruncatedPowerLaw(2.0, 0.0, 1.0),
         lambda: DiscreteUniform(3, 3),
@@ -139,6 +152,7 @@ def test_invalid_parameters_fail_at_construction(constructor) -> None:
         Uniform(),
         Beta(),
         Exponential(),
+        Gamma(),
         TruncatedNormal(0.0, 1.0, -1.0, 1.0),
         TruncatedPowerLaw(1.0, 0.1, 10.0),
         TruncatedSine(),
@@ -153,5 +167,6 @@ def test_pbjam_lower_case_names_remain_available() -> None:
     assert normal is Normal
     assert uniform is Uniform
     assert beta is Beta
+    assert gamma is Gamma
     assert truncsine is TruncatedSine
     assert randint is DiscreteUniform

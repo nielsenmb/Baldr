@@ -32,6 +32,7 @@ def test_public_api_selects_backend_once():
     assert isinstance(baldr.Normal(), ScalarNormal)
     assert isinstance(baldr.Normal(backend="numpy"), NumPyNormal)
     assert isinstance(baldr.Normal(backend="numpy").pdf([0.0]), np.ndarray)
+    assert isinstance(baldr.Gamma(backend="numpy").pdf([1.0]), np.ndarray)
 
 
 def test_unknown_backend_fails_at_construction():

@@ -13,6 +13,7 @@ from statistics import NormalDist
 
 __all__ = [
     "Beta",
+    "Gamma",
     "DiscreteUniform",
     "Exponential",
     "Normal",
@@ -21,6 +22,7 @@ __all__ = [
     "TruncatedSine",
     "Uniform",
     "beta",
+    "gamma",
     "normal",
     "randint",
     "truncsine",
@@ -200,6 +202,61 @@ def _regularized_beta(x: float, a: float, b: float, log_beta: float) -> float:
     return 1.0 - front * _beta_continued_fraction(b, a, 1.0 - x) / b
 
 
+def _regularized_gamma(a: float, x: float) -> float:
+    """Evaluate the regularized lower incomplete gamma function.
+
+    Parameters
+    ----------
+    a : float
+        Positive shape parameter.
+    x : float
+        Non-negative evaluation point.
+
+    Returns
+    -------
+    float
+        Value of the regularized lower incomplete gamma function.
+    """
+
+    if x <= 0.0:
+        return 0.0
+    log_front = a * math.log(x) - x - math.lgamma(a)
+    if x < a + 1.0:
+        term = 1.0 / a
+        total = term
+        denominator = a
+        for _ in range(1, 201):
+            denominator += 1.0
+            term *= x / denominator
+            total += term
+            if abs(term) <= abs(total) * 3e-14:
+                break
+        return total * math.exp(log_front)
+
+    tiny = 1e-300
+    b = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / max(abs(b), tiny)
+    if b < 0.0:
+        d = -d
+    result = d
+    for iteration in range(1, 201):
+        coefficient = -iteration * (iteration - a)
+        b += 2.0
+        d = coefficient * d + b
+        if abs(d) < tiny:
+            d = tiny
+        c = b + coefficient / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        result *= delta
+        if abs(delta - 1.0) <= 3e-14:
+            break
+    return 1.0 - math.exp(log_front) * result
+
+
 def _log_power_at_boundary(exponent: float) -> float:
     if exponent > 0.0:
         return -math.inf
@@ -334,6 +391,144 @@ class Exponential:
         if endpoint is not None:
             return endpoint
         return -self.scale * math.log1p(-q)
+
+
+@dataclass(frozen=True, slots=True)
+class Gamma:
+    """Gamma distribution using SciPy's shape, location, and scale convention.
+
+    Parameters
+    ----------
+    a : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    a: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+    _inverse_scale: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache scalar normalization terms."""
+
+        a = _positive(self.a, "a")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        object.__setattr__(self, "a", a)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_inverse_scale", 1.0 / scale)
+        object.__setattr__(
+            self, "_log_normalization", -math.lgamma(a) - math.log(scale)
+        )
+
+    @property
+    def mean(self) -> float:
+        """Return the distribution mean."""
+
+        return self.loc + self.a * self.scale
+
+    @property
+    def median(self) -> float:
+        """Return the distribution median."""
+
+        return self.ppf(0.5)
+
+    def logpdf(self, x: float, norm: bool = True) -> float:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        float
+            Log-density at ``x``.
+        """
+
+        y = (x - self.loc) * self._inverse_scale
+        if y < 0.0:
+            return -math.inf
+        power = _log_power_at_boundary(self.a - 1.0) if y == 0.0 else (
+            (self.a - 1.0) * math.log(y)
+        )
+        value = power - y
+        return value + self._log_normalization if norm else value
+
+    def pdf(self, x: float, norm: bool = True) -> float:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        float
+            Probability density at ``x``.
+        """
+
+        return math.exp(self.logpdf(x, norm=norm))
+
+    def cdf(self, x: float) -> float:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Cumulative probability at ``x``.
+        """
+
+        return _regularized_gamma(
+            self.a, (x - self.loc) * self._inverse_scale
+        )
+
+    def ppf(self, q: float) -> float:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : float
+            Cumulative probability in ``[0, 1]``.
+
+        Returns
+        -------
+        float
+            Distribution quantile.
+        """
+
+        endpoint = _quantile_endpoint(q, self.loc, math.inf)
+        if endpoint is not None:
+            return endpoint
+
+        low = 0.0
+        high = max(1.0, self.a)
+        while _regularized_gamma(self.a, high) < q:
+            high *= 2.0
+        for _ in range(96):
+            middle = 0.5 * (low + high)
+            if _regularized_gamma(self.a, middle) < q:
+                low = middle
+            else:
+                high = middle
+        return self.loc + self.scale * 0.5 * (low + high)
 
 
 @dataclass(frozen=True, slots=True)
@@ -554,5 +749,6 @@ class DiscreteUniform:
 normal = Normal
 uniform = Uniform
 beta = Beta
+gamma = Gamma
 truncsine = TruncatedSine
 randint = DiscreteUniform
