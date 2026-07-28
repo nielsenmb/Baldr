@@ -20,8 +20,20 @@ the hot path can then remain small.
 
 ## Status
 
-Baldr is in its benchmark and API-design phase. No stable distribution API is
-available yet.
+Baldr is in its benchmark and API-design phase. The dependency-free scalar
+backend is available experimentally:
+
+```python
+from baldr.scalar import Normal
+
+prior = Normal(loc=0.0, scale=1.0)
+x = prior.ppf(0.95)
+log_density = prior.logpdf(x)
+```
+
+Scalar classes validate their parameters during construction, not during
+repeated density evaluations. They accept Python scalar values only; NumPy
+broadcasting and the backend-selecting public API will follow in PR 3.
 
 The first benchmark uses the Normal log-PDF as a control and separates
 construction, first-call or compilation, and warm-call timings. See
