@@ -65,3 +65,27 @@ does not attach physical interpretation or parameter policy to them.
 Select `backend="jax"` and JIT the complete prior transform or likelihood.
 Baldr methods are traceable but are not individually decorated with
 `jax.jit`. This keeps compilation boundaries under the caller's control.
+
+## PBjam empirical priors
+
+PBjam's `makeDistObject(data)` fits one independent KDE to every column.
+Baldr provides the same data layout explicitly:
+
+```python
+from baldr.empirical import fit_empirical_marginals
+
+priors = fit_empirical_marginals(data, backend="jax")
+```
+
+The default `normal_reference` bandwidth reproduces PBjam's robust
+normal-reference rule. Baldr normalizes the finite interpolation grid and uses
+the same cached grid for PDF, CDF, and PPF evaluation. Consequently, small tail
+differences from PBjam's separately constructed PPF grid are expected.
+
+For a single marginal, use `fit_empirical(sample)`. A fitted NumPy prior can be
+transferred to JAX without repeating the KDE:
+
+```python
+numpy_prior = fit_empirical(sample)
+jax_prior = numpy_prior.grid.to_backend("jax")
+```
