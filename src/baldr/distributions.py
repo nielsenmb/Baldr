@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from baldr import scalar
 
-Backend = Literal["scalar", "numpy"]
+Backend = Literal["scalar", "numpy", "jax"]
 
 __all__ = [
     "Backend",
@@ -28,7 +28,11 @@ def _module(backend: Backend) -> Any:
         from baldr import numpy
 
         return numpy
-    raise ValueError("backend must be 'scalar' or 'numpy'")
+    if backend == "jax":
+        from baldr import jax
+
+        return jax
+    raise ValueError("backend must be 'scalar', 'numpy', or 'jax'")
 
 
 def Normal(

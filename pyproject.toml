@@ -22,8 +22,9 @@ classifiers = [
 
 [project.optional-dependencies]
 numpy = ["numpy>=1.23", "scipy>=1.9"]
-benchmark = ["distrax", "jax", "numpy>=1.23", "numpyro", "scipy>=1.9"]
-test = ["numpy>=1.23", "pytest>=8", "scipy>=1.9"]
+jax = ["jax>=0.4.28"]
+benchmark = ["distrax", "jax>=0.4.28", "numpy>=1.23", "numpyro", "scipy>=1.9"]
+test = ["jax>=0.4.28", "numpy>=1.23", "pytest>=8", "scipy>=1.9"]
 dev = ["baldr[benchmark,test]", "ruff>=0.9"]
 
 [project.urls]

@@ -11,7 +11,7 @@ def test_importing_baldr_does_not_import_numpy(monkeypatch):
     original_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
-        if name == "numpy" or name.startswith("scipy"):
+        if name in {"jax", "numpy"} or name.startswith(("jax.", "scipy")):
             raise AssertionError(f"optional dependency imported eagerly: {name}")
         return original_import(name, *args, **kwargs)
 

@@ -192,6 +192,17 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="Write the full JSON report to this path.",
     )
+    parser.add_argument(
+        "--prior-transform",
+        action="store_true",
+        help="Also benchmark a multi-distribution JAX prior transform.",
+    )
+    parser.add_argument(
+        "--dimensions",
+        type=int,
+        default=24,
+        help="Number of parameters in the fused prior transform.",
+    )
     return parser
 
 
@@ -206,6 +217,18 @@ def main(argv: Sequence[str] | None = None) -> None:
         number=arguments.number,
         dtype=arguments.dtype,
     )
+    if arguments.prior_transform:
+        try:
+            from baldr.benchmarks.fused import benchmark_fused_prior_transform
+
+            report["prior_transform"] = benchmark_fused_prior_transform(
+                dimensions=arguments.dimensions,
+                repeat=arguments.repeat,
+                number=arguments.number,
+                dtype=arguments.dtype,
+            )
+        except ImportError as error:
+            report["prior_transform"] = {"skipped": str(error)}
     encoded = json.dumps(report, indent=2)
     if arguments.output is not None:
         arguments.output.write_text(encoded + "\n", encoding="utf-8")

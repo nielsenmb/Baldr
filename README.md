@@ -20,23 +20,24 @@ the hot path can then remain small.
 
 ## Status
 
-Baldr is in its benchmark and API-design phase. Scalar and NumPy backends are
-available through the experimental public constructors:
+Baldr is in its benchmark and API-design phase. Scalar, NumPy, and JAX
+backends are available through the experimental public constructors:
 
 ```python
 from baldr import Normal
 
 scalar_prior = Normal(loc=0.0, scale=1.0)
 array_prior = Normal(loc=0.0, scale=1.0, backend="numpy")
+jax_prior = Normal(loc=0.0, scale=1.0, backend="jax")
 
 x = scalar_prior.ppf(0.95)
 log_density = array_prior.logpdf([x, 0.0])
 ```
 
 Backend selection happens once during construction, so repeated evaluations do
-not pay for a backend branch. The scalar backend remains dependency-free. Install
-`baldr[numpy]` for broadcasting over NumPy arrays; SciPy supplies the special
-functions that NumPy itself does not provide.
+not pay for a backend branch. Install `baldr[numpy]` for NumPy broadcasting or
+`baldr[jax]` for traceable JAX arrays. Baldr does not JIT individual methods:
+compile the complete prior transform or likelihood to let JAX fuse operations.
 
 The first benchmark uses the Normal log-PDF as a control and separates
 construction, first-call or compilation, and warm-call timings. See

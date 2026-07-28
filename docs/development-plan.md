@@ -42,6 +42,10 @@ created.
 - Benchmark isolated calls and realistic fused prior transforms separately.
 - Document compilation-cache and static-argument pitfalls.
 
+The JAX backend is available experimentally as :mod:`baldr.jax`. Its methods
+are traceable and broadcasting, but are intentionally not individually JIT
+compiled.
+
 ## PR 5 — Additional distributions and PBjam/AsteroScale migration
 
 - Add Gamma and other generally useful functions identified during migration.
