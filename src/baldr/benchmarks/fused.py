@@ -62,14 +62,14 @@ def _transform_methods(dimensions: int):
     return tuple(factories[index % len(factories)]() for index in range(dimensions))
 
 
-def benchmark_fused_prior_transform(
+def _run_fused_prior_transform(
     *,
     dimensions: int = 24,
     repeat: int = 7,
     number: int = 1000,
     dtype: str = "float64",
 ) -> dict[str, Any]:
-    """Compare eager, method-jitted, and whole-transform-jitted execution."""
+    """Run the benchmark after the requested JAX precision is configured."""
 
     if dimensions < 1:
         raise ValueError("dimensions must be positive")
@@ -79,7 +79,6 @@ def benchmark_fused_prior_transform(
     import jax
     import jax.numpy as jnp
 
-    jax.config.update("jax_enable_x64", dtype == "float64")
     probabilities = jnp.linspace(0.05, 0.95, dimensions, dtype=dtype)
     methods = _transform_methods(dimensions)
 
@@ -132,3 +131,32 @@ def benchmark_fused_prior_transform(
         "number": number,
         "results": results,
     }
+
+
+def benchmark_fused_prior_transform(
+    *,
+    dimensions: int = 24,
+    repeat: int = 7,
+    number: int = 1000,
+    dtype: str = "float64",
+) -> dict[str, Any]:
+    """Compare eager, method-jitted, and whole-transform-jitted execution.
+
+    JAX floating-point configuration is process-wide. This benchmark restores
+    the caller's setting so a float32 timing run cannot silently change later
+    computations or tests.
+    """
+
+    import jax
+
+    previous_x64 = jax.config.x64_enabled
+    jax.config.update("jax_enable_x64", dtype == "float64")
+    try:
+        return _run_fused_prior_transform(
+            dimensions=dimensions,
+            repeat=repeat,
+            number=number,
+            dtype=dtype,
+        )
+    finally:
+        jax.config.update("jax_enable_x64", previous_x64)
