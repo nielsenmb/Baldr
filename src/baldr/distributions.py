@@ -23,6 +23,19 @@ __all__ = [
 
 
 def _module(backend: Backend) -> Any:
+    """Load an execution backend lazily.
+
+    Parameters
+    ----------
+    backend : {"scalar", "numpy", "jax"}
+        Requested execution backend.
+
+    Returns
+    -------
+    module
+        Backend implementation module.
+    """
+
     if backend == "scalar":
         return scalar
     if backend == "numpy":
@@ -39,7 +52,22 @@ def _module(backend: Backend) -> Any:
 def Normal(
     loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar"
 ) -> Any:
-    """Construct a Normal distribution for the selected backend."""
+    """Construct a Normal distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float, default=0.0
+        Distribution mean.
+    scale : float, default=1.0
+        Positive standard deviation.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Normal distribution implemented by the selected backend.
+    """
 
     return _module(backend).Normal(loc=loc, scale=scale)
 
@@ -47,7 +75,22 @@ def Normal(
 def Uniform(
     loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar"
 ) -> Any:
-    """Construct a continuous uniform distribution for the selected backend."""
+    """Construct a continuous uniform distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive support width.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Uniform distribution implemented by the selected backend.
+    """
 
     return _module(backend).Uniform(loc=loc, scale=scale)
 
@@ -60,13 +103,43 @@ def Beta(
     *,
     backend: Backend = "scalar",
 ) -> Any:
-    """Construct a transformed Beta distribution for the selected backend."""
+    """Construct a transformed Beta distribution for the selected backend.
+
+    Parameters
+    ----------
+    a, b : float, default=1.0
+        Positive shape parameters.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive support width.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Beta distribution implemented by the selected backend.
+    """
 
     return _module(backend).Beta(a=a, b=b, loc=loc, scale=scale)
 
 
 def Exponential(scale: float = 1.0, *, backend: Backend = "scalar") -> Any:
-    """Construct an Exponential distribution for the selected backend."""
+    """Construct an Exponential distribution for the selected backend.
+
+    Parameters
+    ----------
+    scale : float, default=1.0
+        Positive inverse-rate scale.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Exponential distribution implemented by the selected backend.
+    """
 
     return _module(backend).Exponential(scale=scale)
 
@@ -108,7 +181,24 @@ def TruncatedNormal(
     *,
     backend: Backend = "scalar",
 ) -> Any:
-    """Construct a truncated Normal distribution for the selected backend."""
+    """Construct a truncated Normal distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float
+        Mean of the underlying Normal distribution.
+    scale : float
+        Positive standard deviation.
+    low, high : float
+        Ordered truncation boundaries.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Truncated Normal distribution implemented by the selected backend.
+    """
 
     return _module(backend).TruncatedNormal(
         loc=loc, scale=scale, low=low, high=high
@@ -122,13 +212,39 @@ def TruncatedPowerLaw(
     *,
     backend: Backend = "scalar",
 ) -> Any:
-    """Construct a truncated power-law distribution for the selected backend."""
+    """Construct a truncated power-law distribution for the selected backend.
+
+    Parameters
+    ----------
+    alpha : float
+        Exponent in the density proportional to ``x**(-alpha)``.
+    low, high : float
+        Positive ordered support boundaries.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Truncated power-law distribution implemented by the selected backend.
+    """
 
     return _module(backend).TruncatedPowerLaw(alpha=alpha, low=low, high=high)
 
 
 def TruncatedSine(*, backend: Backend = "scalar") -> Any:
-    """Construct a truncated sine distribution for the selected backend."""
+    """Construct a truncated sine distribution for the selected backend.
+
+    Parameters
+    ----------
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Sine distribution on ``[0, pi / 2]`` for the selected backend.
+    """
 
     return _module(backend).TruncatedSine()
 
@@ -136,6 +252,19 @@ def TruncatedSine(*, backend: Backend = "scalar") -> Any:
 def DiscreteUniform(
     low: int, high: int, *, backend: Backend = "scalar"
 ) -> Any:
-    """Construct a discrete uniform distribution for the selected backend."""
+    """Construct a discrete uniform distribution for the selected backend.
+
+    Parameters
+    ----------
+    low, high : int
+        Integer support boundaries defining ``[low, high)``.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Discrete uniform distribution implemented by the selected backend.
+    """
 
     return _module(backend).DiscreteUniform(low=low, high=high)

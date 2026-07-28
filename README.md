@@ -20,8 +20,8 @@ the hot path can then remain small.
 
 ## Status
 
-Baldr is in its benchmark and API-design phase. Scalar, NumPy, and JAX
-backends are available through the experimental public constructors:
+Baldr provides scalar, NumPy, and JAX backends through a shared set of public
+constructors:
 
 ```python
 from baldr import Gamma, Normal
@@ -46,6 +46,19 @@ distributions. `CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`,
 and `ppf` functions without imposing a backend or performing construction-time
 numerical integration.
 
+Empirical priors can be fitted once and evaluated repeatedly through cached
+interpolation grids:
+
+```python
+from baldr.empirical import fit_empirical
+
+prior = fit_empirical(samples, backend="numpy")
+jax_prior = prior.grid.to_backend("jax")  # reuses the fitted KDE grid
+```
+
+Install `baldr[empirical]` to fit empirical distributions. JAX evaluation also
+requires `baldr[jax]`.
+
 The first benchmark uses the Normal log-PDF as a control and separates
 construction, first-call or compilation, and warm-call timings. See
 [the benchmarking policy](docs/benchmarking.md) for the comparison set and
@@ -55,6 +68,9 @@ The staged implementation is described in the
 [development plan](docs/development-plan.md).
 Users moving existing priors can follow the
 [PBjam and AsteroScale migration guide](docs/migration.md).
+The [API reference](docs/api.md) defines the supported pre-release surface, and
+the [empirical-prior guide](docs/empirical.md) explains the approximation and
+backend tradeoffs.
 
 ## Development
 
