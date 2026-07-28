@@ -61,6 +61,31 @@ results, and skipped optional implementations. Benchmark outputs should not be
 committed as universal performance claims: hardware and package versions are
 part of every result.
 
+## Benchmark notebooks
+
+Install the notebook dependencies and start JupyterLab with:
+
+```bash
+python -m pip install -e ".[notebook]"
+jupyter lab
+```
+
+Two worked notebooks extend the command-line Normal `logpdf` control:
+
+- [`distribution-performance.ipynb`](../notebooks/distribution-performance.ipynb)
+  times `logpdf`, `pdf`, `cdf`, and `ppf` for representative distributions in
+  repeated scalar and vector workloads. It compares Baldr scalar and NumPy
+  backends with `scipy.stats`, then separates JAX compilation from synchronized
+  warm calls.
+- [`numerical-agreement.ipynb`](../notebooks/numerical-agreement.ipynb)
+  compares the scalar, NumPy, JAX float32, and JAX float64 backends with
+  `scipy.stats`. It tests central values, finite-support boundaries, extreme
+  quantiles, and `cdf(ppf(q))` round trips.
+
+Both default to quick exploratory runs and record environment metadata. Use the
+full performance profile only on an otherwise quiet machine, and interpret
+results for the hardware and dependency versions recorded by that run.
+
 ## Interpretation rules
 
 - Compare scalar Python-call overhead separately from array throughput.

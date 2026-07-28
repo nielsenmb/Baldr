@@ -25,6 +25,7 @@ numpy = ["numpy>=1.23", "scipy>=1.9"]
 jax = ["jax>=0.4.28"]
 empirical = ["numpy>=1.23", "scipy>=1.9"]
 benchmark = ["distrax", "jax>=0.4.28", "numpy>=1.23", "numpyro", "scipy>=1.9"]
+notebook = ["baldr[benchmark]", "jupyterlab>=4", "matplotlib>=3.7", "pandas>=2"]
 test = ["jax>=0.4.28", "numpy>=1.23", "pytest>=8", "scipy>=1.9"]
 dev = ["baldr[benchmark,test]", "ruff>=0.9"]
 
