@@ -12,18 +12,31 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from scipy.special import betainc, betaincinv, betaln, ndtr, ndtri, xlog1py, xlogy
+from scipy.special import (
+    betainc,
+    betaincinv,
+    betaln,
+    gammainc,
+    gammaincinv,
+    gammaln,
+    ndtr,
+    ndtri,
+    xlog1py,
+    xlogy,
+)
 
 __all__ = [
     "Beta",
     "DiscreteUniform",
     "Exponential",
+    "Gamma",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
     "beta",
+    "gamma",
     "normal",
     "randint",
     "truncsine",
@@ -236,6 +249,128 @@ class Exponential:
         q, valid = _valid_quantile(q)
         with np.errstate(divide="ignore", invalid="ignore"):
             value = -self.scale * np.log1p(-q)
+        return np.where(valid, value, np.nan)
+
+
+@dataclass(frozen=True, slots=True)
+class Gamma:
+    """Gamma distribution with broadcasting NumPy methods.
+
+    Parameters
+    ----------
+    a : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    a: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+    _inverse_scale: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache normalization terms."""
+
+        a = _positive(self.a, "a")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        object.__setattr__(self, "a", a)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_inverse_scale", 1.0 / scale)
+        object.__setattr__(
+            self, "_log_normalization", -float(gammaln(a)) - math.log(scale)
+        )
+
+    @property
+    def mean(self) -> float:
+        """Return the distribution mean."""
+
+        return self.loc + self.a * self.scale
+
+    @property
+    def median(self) -> float:
+        """Return the distribution median."""
+
+        return float(self.ppf(0.5))
+
+    def logpdf(self, x: Any, norm: bool = True) -> np.ndarray:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        numpy.ndarray
+            Log-density at each evaluation point.
+        """
+
+        y = (np.asarray(x) - self.loc) * self._inverse_scale
+        value = xlogy(self.a - 1.0, y) - y
+        if norm:
+            value = value + self._log_normalization
+        return np.where(y >= 0.0, value, -np.inf)
+
+    def pdf(self, x: Any, norm: bool = True) -> np.ndarray:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        numpy.ndarray
+            Probability density at each evaluation point.
+        """
+
+        return np.exp(self.logpdf(x, norm=norm))
+
+    def cdf(self, x: Any) -> np.ndarray:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Cumulative probability at each evaluation point.
+        """
+
+        y = (np.asarray(x) - self.loc) * self._inverse_scale
+        return np.where(y > 0.0, gammainc(self.a, y), 0.0)
+
+    def ppf(self, q: Any) -> np.ndarray:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : array-like
+            Cumulative probabilities in ``[0, 1]``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Distribution quantiles.
+        """
+
+        q, valid = _valid_quantile(q)
+        value = self.loc + self.scale * gammaincinv(self.a, q)
         return np.where(valid, value, np.nan)
 
 
@@ -472,5 +607,6 @@ class DiscreteUniform:
 normal = Normal
 uniform = Uniform
 beta = Beta
+gamma = Gamma
 truncsine = TruncatedSine
 randint = DiscreteUniform

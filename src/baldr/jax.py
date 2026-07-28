@@ -13,18 +13,20 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-from jax.scipy.special import betainc, ndtr, ndtri, xlog1py, xlogy
+from jax.scipy.special import betainc, gammainc, ndtr, ndtri, xlog1py, xlogy
 
 __all__ = [
     "Beta",
     "DiscreteUniform",
     "Exponential",
+    "Gamma",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
     "beta",
+    "gamma",
     "normal",
     "randint",
     "truncsine",
@@ -72,6 +74,51 @@ def _beta_ppf(q: Any, a: float, b: float) -> jax.Array:
     value = 0.5 * (low + high)
     value = jnp.where(q == 0.0, 0.0, value)
     return jnp.where(q == 1.0, 1.0, value)
+
+
+def _gamma_ppf(q: Any, a: float) -> jax.Array:
+    """Invert the regularized incomplete gamma with traceable bisection.
+
+    Parameters
+    ----------
+    q : array-like
+        Cumulative probabilities.
+    a : float
+        Positive shape parameter.
+
+    Returns
+    -------
+    jax.Array
+        Standard Gamma quantiles.
+    """
+
+    q = jnp.asarray(q)
+    low = jnp.zeros_like(q)
+    high = jnp.full_like(q, max(1.0, a))
+
+    def expand(_: int, upper: jax.Array) -> jax.Array:
+        """Expand upper brackets that remain below the target probability."""
+
+        return jnp.where(gammainc(a, upper) < q, 2.0 * upper, upper)
+
+    high = jax.lax.fori_loop(0, 64, expand, high)
+
+    def bisect(
+        _: int, bounds: tuple[jax.Array, jax.Array]
+    ) -> tuple[jax.Array, jax.Array]:
+        """Apply one vectorized bisection iteration."""
+
+        lower, upper = bounds
+        middle = 0.5 * (lower + upper)
+        move_lower = gammainc(a, middle) < q
+        return jnp.where(move_lower, middle, lower), jnp.where(
+            move_lower, upper, middle
+        )
+
+    low, high = jax.lax.fori_loop(0, 80, bisect, (low, high))
+    value = 0.5 * (low + high)
+    value = jnp.where(q == 0.0, 0.0, value)
+    return jnp.where(q == 1.0, jnp.inf, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +379,128 @@ class TruncatedNormal:
 
 
 @dataclass(frozen=True, slots=True)
+class Gamma:
+    """Gamma distribution with JAX-traceable methods.
+
+    Parameters
+    ----------
+    a : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    a: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+    _inverse_scale: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache normalization terms."""
+
+        a = _positive(self.a, "a")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        object.__setattr__(self, "a", a)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_inverse_scale", 1.0 / scale)
+        object.__setattr__(
+            self, "_log_normalization", -math.lgamma(a) - math.log(scale)
+        )
+
+    @property
+    def mean(self) -> float:
+        """Return the distribution mean."""
+
+        return self.loc + self.a * self.scale
+
+    @property
+    def median(self) -> jax.Array:
+        """Return the distribution median."""
+
+        return self.ppf(0.5)
+
+    def logpdf(self, x: Any, norm: bool = True) -> jax.Array:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        jax.Array
+            Log-density at each evaluation point.
+        """
+
+        y = (jnp.asarray(x) - self.loc) * self._inverse_scale
+        value = xlogy(self.a - 1.0, y) - y
+        if norm:
+            value = value + self._log_normalization
+        return jnp.where(y >= 0.0, value, -jnp.inf)
+
+    def pdf(self, x: Any, norm: bool = True) -> jax.Array:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        jax.Array
+            Probability density at each evaluation point.
+        """
+
+        return jnp.exp(self.logpdf(x, norm=norm))
+
+    def cdf(self, x: Any) -> jax.Array:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Cumulative probability at each evaluation point.
+        """
+
+        y = (jnp.asarray(x) - self.loc) * self._inverse_scale
+        return jnp.where(y > 0.0, gammainc(self.a, y), 0.0)
+
+    def ppf(self, q: Any) -> jax.Array:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : array-like
+            Cumulative probabilities in ``[0, 1]``.
+
+        Returns
+        -------
+        jax.Array
+            Distribution quantiles.
+        """
+
+        q, valid = _quantile(q)
+        value = self.loc + self.scale * _gamma_ppf(q, self.a)
+        return jnp.where(valid, value, jnp.nan)
+
+
+@dataclass(frozen=True, slots=True)
 class TruncatedPowerLaw:
     """Density proportional to ``x**(-alpha)`` on ``[low, high]``."""
 
@@ -500,5 +669,6 @@ class DiscreteUniform:
 normal = Normal
 uniform = Uniform
 beta = Beta
+gamma = Gamma
 truncsine = TruncatedSine
 randint = DiscreteUniform

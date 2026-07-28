@@ -39,6 +39,7 @@ def _transform_methods(dimensions: int):
     from baldr import (
         Beta,
         Exponential,
+        Gamma,
         Normal,
         TruncatedNormal,
         TruncatedPowerLaw,
@@ -51,6 +52,7 @@ def _transform_methods(dimensions: int):
         lambda: Uniform(loc=-2.0, scale=4.0, backend="jax").ppf,
         lambda: Beta(a=2.0, b=5.0, backend="jax").ppf,
         lambda: Exponential(scale=2.0, backend="jax").ppf,
+        lambda: Gamma(a=2.5, scale=1.5, backend="jax").ppf,
         lambda: TruncatedNormal(
             loc=0.0, scale=1.0, low=-2.0, high=3.0, backend="jax"
         ).ppf,

@@ -10,6 +10,7 @@ from baldr.numpy import (
     Beta,
     DiscreteUniform,
     Exponential,
+    Gamma,
     Normal,
     TruncatedNormal,
     TruncatedPowerLaw,
@@ -29,6 +30,11 @@ from baldr.numpy import (
             [-1.0, -0.5, 0.0, 2.0],
         ),
         (Exponential(2.0), stats.expon(scale=2.0), [-1.0, 0.0, 1.0, 5.0]),
+        (
+            Gamma(2.5, -1.0, 3.0),
+            stats.gamma(2.5, loc=-1.0, scale=3.0),
+            [-2.0, -1.0, 0.0, 5.0],
+        ),
         (
             TruncatedNormal(0.0, 1.5, -1.0, 2.0),
             stats.truncnorm(-1.0 / 1.5, 2.0 / 1.5, 0.0, 1.5),
@@ -53,6 +59,7 @@ def test_continuous_distributions_match_scipy(distribution, reference, points):
         Uniform(),
         Beta(2.0, 3.0),
         Exponential(),
+        Gamma(2.5),
         TruncatedNormal(0.0, 1.0, -1.0, 1.0),
         TruncatedPowerLaw(2.35, 0.1, 10.0),
         TruncatedPowerLaw(1.0, 0.1, 10.0),
@@ -85,7 +92,7 @@ def test_discrete_uniform_broadcasts_and_handles_endpoints():
 
 
 def test_invalid_quantiles_return_nan():
-    for distribution in (Normal(), Uniform(), Beta(), Exponential()):
+    for distribution in (Normal(), Uniform(), Beta(), Exponential(), Gamma()):
         assert np.isnan(distribution.ppf([-0.1, 1.1])).all()
 
 

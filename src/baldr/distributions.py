@@ -13,6 +13,7 @@ __all__ = [
     "Beta",
     "DiscreteUniform",
     "Exponential",
+    "Gamma",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
@@ -68,6 +69,35 @@ def Exponential(scale: float = 1.0, *, backend: Backend = "scalar") -> Any:
     """Construct an Exponential distribution for the selected backend."""
 
     return _module(backend).Exponential(scale=scale)
+
+
+def Gamma(
+    a: float = 1.0,
+    loc: float = 0.0,
+    scale: float = 1.0,
+    *,
+    backend: Backend = "scalar",
+) -> Any:
+    """Construct a Gamma distribution for the selected backend.
+
+    Parameters
+    ----------
+    a : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Gamma distribution implemented by the selected backend.
+    """
+
+    return _module(backend).Gamma(a=a, loc=loc, scale=scale)
 
 
 def TruncatedNormal(
