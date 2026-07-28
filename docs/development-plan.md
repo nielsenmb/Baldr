@@ -65,3 +65,8 @@ Baldr can be reviewed and released independently.
 - Add API documentation, usage notebooks, a benchmark report, and release
   metadata.
 - Define the supported public API and prepare the first pre-release.
+
+Empirical KDEs are fitted once into normalized interpolation grids. NumPy and
+JAX evaluators reuse those grids, so changing the evaluation backend does not
+repeat the fit. API and empirical-prior guides, a worked notebook, release
+notes, and `0.1.0rc1` metadata complete the first planned development sequence.
