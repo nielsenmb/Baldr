@@ -22,6 +22,8 @@ the distribution-level API.
   methods.
 - Test support boundaries, extreme probabilities, and PBjam compatibility.
 
+The scalar backend is available experimentally as :mod:`baldr.scalar`.
+
 ## PR 3 — NumPy backend and public API
 
 - Add broadcasting array kernels and frozen distribution objects.
