@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("baldr")
 except PackageNotFoundError:
-    __version__ = "0.1.0.dev0"
+    __version__ = "0.1.0rc1"
 
 from baldr import scalar
 from baldr.callable import CallableDistribution, distribution
