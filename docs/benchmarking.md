@@ -81,6 +81,11 @@ Two worked notebooks extend the command-line Normal `logpdf` control:
   compares the scalar, NumPy, JAX float32, and JAX float64 backends with
   `scipy.stats`. It tests central values, finite-support boundaries, extreme
   quantiles, and `cdf(ppf(q))` round trips.
+- [`jax-library-comparison.ipynb`](../notebooks/jax-library-comparison.ipynb)
+  compares Baldr, NumPyro, and Distrax using matched JAX distribution kernels.
+  It separates eager execution, compilation, and warm JIT timings; checks
+  numerical agreement; and benchmarks fused log-density and prior-transform
+  workloads while reporting unsupported inverse-CDF combinations explicitly.
 
 Both default to quick exploratory runs and record environment metadata. Use the
 full performance profile only on an otherwise quiet machine, and interpret
