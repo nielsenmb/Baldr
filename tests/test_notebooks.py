@@ -12,6 +12,7 @@ NOTEBOOKS = (
     "distribution-performance.ipynb",
     "numerical-agreement.ipynb",
     "jax-library-comparison.ipynb",
+    "empirical-priors.ipynb",
 )
 
 

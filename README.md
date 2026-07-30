@@ -1,27 +1,51 @@
 # Baldr
 
-Baldr is an experimental Python package for probability distributions that are
-fast to evaluate in sampling and inference workloads.
+Baldr is a small Python package for probability distributions that are fast to
+evaluate in sampling and inference workloads.
 
-The project is benchmark-first. It will provide deliberately lean execution
-paths for three different use cases:
+It provides deliberately lean execution paths for three use cases:
 
 - dependency-free scalar evaluation for samplers such as Dynesty;
 - NumPy broadcasting for CPU vector workloads; and
 - JAX-traceable kernels for larger compiled transforms and likelihoods.
 
-These paths will share a distribution-level public API, but backend selection
-will happen when a distribution is constructed rather than during every
-evaluation. JAX will remain optional.
+These paths share a distribution-level public API. Backend selection happens
+when a distribution is constructed rather than during every evaluation, and
+JAX remains optional.
 
 Baldr is not intended to replace the validation and broad flexibility of
-`scipy.stats`. Users are expected to validate parameters at model boundaries;
-the hot path can then remain small.
+`scipy.stats`. Users are expected to validate parameters at model boundaries
+so the repeated hot path can remain small.
 
-## Status
+## Installation
 
-Baldr provides scalar, NumPy, and JAX backends through a shared set of public
-constructors:
+Baldr is not currently published on PyPI. Install the current version directly
+from GitHub:
+
+```bash
+python -m pip install "baldr @ git+https://github.com/nielsenmb/Baldr.git"
+```
+
+Add the extras required by the intended backend or workflow:
+
+```bash
+# NumPy/SciPy array backend
+python -m pip install "baldr[numpy] @ git+https://github.com/nielsenmb/Baldr.git"
+
+# JAX backend
+python -m pip install "baldr[jax] @ git+https://github.com/nielsenmb/Baldr.git"
+
+# Empirical KDE fitting
+python -m pip install "baldr[empirical] @ git+https://github.com/nielsenmb/Baldr.git"
+
+# Benchmark notebooks and comparison libraries
+python -m pip install "baldr[notebook] @ git+https://github.com/nielsenmb/Baldr.git"
+```
+
+A branch, tag, or commit can be pinned by appending `@<ref>` to the repository
+URL, for example `Baldr.git@main`.
+
+## Usage
 
 ```python
 from baldr import Gamma, Normal
@@ -36,15 +60,14 @@ log_density = array_prior.logpdf([x, 0.0])
 ```
 
 Backend selection happens once during construction, so repeated evaluations do
-not pay for a backend branch. Install `baldr[numpy]` for NumPy broadcasting or
-`baldr[jax]` for traceable JAX arrays. Baldr does not JIT individual methods:
-compile the complete prior transform or likelihood to let JAX fuse operations.
+not pay for a backend branch. Baldr does not JIT individual methods: compile
+the complete prior transform or likelihood to let JAX fuse operations.
 
-Baldr currently provides Normal, Uniform, Beta, Gamma, Exponential, truncated
-Normal, truncated power-law, truncated sine, and discrete uniform
-distributions. `CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`,
-and `ppf` functions without imposing a backend or performing construction-time
-numerical integration.
+Baldr provides Normal, Uniform, Beta, Gamma, Exponential, truncated Normal,
+truncated power-law, truncated sine, and discrete uniform distributions.
+`CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`, and `ppf`
+functions without imposing a backend or performing construction-time numerical
+integration.
 
 Empirical priors can be fitted once and evaluated repeatedly through cached
 interpolation grids:
@@ -56,25 +79,24 @@ prior = fit_empirical(samples, backend="numpy")
 jax_prior = prior.grid.to_backend("jax")  # reuses the fitted KDE grid
 ```
 
-Install `baldr[empirical]` to fit empirical distributions. JAX evaluation also
-requires `baldr[jax]`.
+## Documentation
 
-The first benchmark uses the Normal log-PDF as a control and separates
-construction, first-call or compilation, and warm-call timings. See
-[the benchmarking policy](docs/benchmarking.md) for the comparison set and
-instructions.
-
-The staged implementation is described in the
-[development plan](docs/development-plan.md).
-Users moving existing priors can follow the
-[PBjam and AsteroScale migration guide](docs/migration.md).
-The [API reference](docs/api.md) defines the supported pre-release surface, and
-the [empirical-prior guide](docs/empirical.md) explains the approximation and
-backend tradeoffs.
+- [Documentation overview](docs/README.md)
+- [Supported API](docs/api.md)
+- [Benchmarking policy and notebooks](docs/benchmarking.md)
+- [Benchmark conclusions](docs/benchmark-report.md)
+- [Empirical-prior guide](docs/empirical.md)
+- [PBjam and AsteroScale migration guide](docs/migration.md)
+- [Development history](docs/development-plan.md)
+- [Changelog](CHANGELOG.md)
 
 ## Development
 
+Clone the repository, then install it in editable mode:
+
 ```bash
+git clone https://github.com/nielsenmb/Baldr.git
+cd Baldr
 python -m pip install -e ".[dev]"
 pytest
 ruff check .

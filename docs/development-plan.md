@@ -1,8 +1,9 @@
 # Development plan
 
-Baldr will be developed in small, benchmark-led pull requests. Each backend is
-kept separate so that performance decisions can be revised without changing
-the distribution-level API.
+Baldr's initial implementation was developed in small, benchmark-led pull
+requests. Each backend remains separate so performance decisions can be revised
+without changing the distribution-level API. The six-stage sequence below is
+complete; later benchmark-notebook additions build on that foundation.
 
 ## PR 1 — Scaffold and benchmark controls
 
