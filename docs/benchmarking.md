@@ -70,7 +70,7 @@ python -m pip install -e ".[notebook]"
 jupyter lab
 ```
 
-Two worked notebooks extend the command-line Normal `logpdf` control:
+Four worked notebooks extend the command-line Normal `logpdf` control:
 
 - [`distribution-performance.ipynb`](../notebooks/distribution-performance.ipynb)
   times `logpdf`, `pdf`, `cdf`, and `ppf` for representative distributions in
@@ -86,10 +86,20 @@ Two worked notebooks extend the command-line Normal `logpdf` control:
   It separates eager execution, compilation, and warm JIT timings; checks
   numerical agreement; and benchmarks fused log-density and prior-transform
   workloads while reporting unsupported inverse-CDF combinations explicitly.
+- [`empirical-priors.ipynb`](../notebooks/empirical-priors.ipynb)
+  demonstrates fitting cached KDE grids, checking normalization and inverse-CDF
+  behaviour, and reusing one fit with NumPy and JAX evaluators.
 
-Both default to quick exploratory runs and record environment metadata. Use the
-full performance profile only on an otherwise quiet machine, and interpret
-results for the hardware and dependency versions recorded by that run.
+All notebooks default to quick exploratory runs and record relevant environment
+metadata. Use the full performance profile only on an otherwise quiet machine,
+and interpret results for the hardware and dependency versions recorded by that
+run.
+
+The numerical-agreement notebook intentionally includes exact finite-support
+endpoints. A mismatch at a Uniform upper endpoint can arise when
+`scipy.stats` standardizes a decimal endpoint to a floating-point value just
+above one. The notebook calls this out separately because it is an endpoint
+rounding artefact, not a general density error.
 
 ## Interpretation rules
 
