@@ -96,6 +96,59 @@ def test_vmap_and_gradient_are_supported():
     assert jax.grad(distribution.logpdf)(0.5) == pytest.approx(0.0)
 
 
+@pytest.mark.parametrize(
+    ("distribution", "reference"),
+    [
+        (baldr_jax.Beta(0.1, 10.0), stats.beta(0.1, 10.0)),
+        (baldr_jax.Beta(10.0, 0.1), stats.beta(10.0, 0.1)),
+        (baldr_jax.Beta(100.0, 100.0), stats.beta(100.0, 100.0)),
+        (baldr_jax.Gamma(0.01), stats.gamma(0.01)),
+        (baldr_jax.Gamma(100.0), stats.gamma(100.0)),
+    ],
+)
+def test_inverse_cdf_hard_shape_and_tail_grid(distribution, reference):
+    """Safeguarded solvers agree with SciPy on difficult representable tails."""
+
+    probabilities = jnp.asarray(
+        [1e-12, 1e-9, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1.0 - 1e-6]
+    )
+    actual = jax.jit(distribution.ppf)(probabilities)
+    expected = reference.ppf(np.asarray(probabilities))
+    np.testing.assert_allclose(actual, expected, rtol=2e-9, atol=2e-13)
+
+
+@pytest.mark.parametrize(
+    "distribution",
+    [baldr_jax.Beta(0.7, 2.5), baldr_jax.Gamma(2.5)],
+)
+def test_inverse_cdf_probability_gradient(distribution):
+    """Quantile gradients satisfy the inverse-function identity."""
+
+    for probability in (0.01, 0.2, 0.8, 0.99):
+        quantile = distribution.ppf(probability)
+        derivative = jax.grad(distribution.ppf)(probability)
+        np.testing.assert_allclose(
+            derivative, 1.0 / distribution.pdf(quantile), rtol=2e-10
+        )
+
+
+@pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
+@pytest.mark.parametrize(
+    "distribution",
+    [baldr_jax.Beta(0.5, 5.0), baldr_jax.Gamma(0.5)],
+)
+def test_inverse_cdf_solver_supports_float_widths(distribution, dtype):
+    """Inverse-CDF solvers preserve both supported floating-point widths."""
+
+    probabilities = jnp.asarray([1e-4, 0.1, 0.5, 0.9, 1.0 - 1e-4], dtype=dtype)
+    result = jax.jit(distribution.ppf)(probabilities)
+    assert result.dtype == dtype
+    tolerance = 2e-5 if dtype == jnp.float32 else 2e-10
+    np.testing.assert_allclose(
+        distribution.cdf(result), probabilities, rtol=tolerance, atol=tolerance
+    )
+
+
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
 def test_float_width_is_preserved(dtype):
     result = jax.jit(baldr_jax.Normal().ppf)(jnp.asarray([0.2, 0.8], dtype=dtype))

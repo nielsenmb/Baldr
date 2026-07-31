@@ -59,11 +59,15 @@ and the exact root-finding or interpolation algorithms are implementation
 details. Baldr validates distribution parameters during construction but does
 not provide SciPy's full runtime validation or distribution catalogue.
 
-## Planned numerical work
+## Inverse-CDF solvers
 
-The next numerical-development priority is hardening and accelerating the
-custom scalar and JAX Beta and Gamma inverse CDFs. This includes wider shape
-and tail grids, convergence reporting, gradient tests, and comparison of the
-current bisection algorithms with safeguarded Newton updates. The work remains
-separate from this analytic-distribution expansion so solver changes can be
-benchmarked independently.
+The scalar and JAX Beta and Gamma inverse CDFs use safeguarded Newton updates:
+Newton steps provide rapid local convergence, while a maintained bracket and
+bisection fallback prevent unstable updates from leaving the support. Upper
+tails are inverted through complementary special functions rather than by
+subtracting probabilities from one.
+
+JAX Beta and Gamma quantiles define derivatives with respect to cumulative
+probability using ``d ppf(q) / d q = 1 / pdf(ppf(q))``. Shape parameters are
+validated Python scalars selected during construction and are not
+differentiable arguments of the distribution objects.

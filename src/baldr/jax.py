@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 from jax.scipy.special import (
     betainc,
+    betaln,
     gammainc,
     gammaincc,
     log_ndtr,
@@ -195,29 +197,131 @@ def _quantile(q: Any) -> tuple[jax.Array, jax.Array]:
     return values, (values >= 0.0) & (values <= 1.0)
 
 
+@partial(jax.custom_jvp, nondiff_argnums=(1, 2))
 def _beta_ppf(q: Any, a: float, b: float) -> jax.Array:
-    """Invert the regularized incomplete beta with traceable bisection."""
+    """Invert the regularized incomplete beta with safeguarded Newton steps.
+
+    Parameters
+    ----------
+    q : array-like
+        Cumulative probabilities.
+    a, b : float
+        Positive shape parameters.
+
+    Returns
+    -------
+    jax.Array
+        Standard Beta quantiles.
+    """
 
     q = jnp.asarray(q)
+    reflected = (q > 0.5) | ((q == 0.5) & (b < a))
+    target = jnp.where(reflected, 1.0 - q, q)
+    shape_a = jnp.where(reflected, b, a)
+    shape_b = jnp.where(reflected, a, b)
+    dtype = q.dtype
+    tiny = jnp.finfo(dtype).tiny
+    epsilon = jnp.finfo(dtype).eps
+    safe_target = jnp.clip(target, tiny, 0.5)
+    tolerance = 64.0 * epsilon * jnp.maximum(target, tiny)
+
+    tail_guess = jnp.exp(
+        (jnp.log(safe_target) + jnp.log(shape_a) + betaln(shape_a, shape_b))
+        / shape_a
+    )
+    mean_guess = shape_a / (shape_a + shape_b)
+    use_tail_guess = (shape_a < 1.0) | (
+        (safe_target <= 0.25) & (shape_b >= 1.0)
+    )
+    x = jnp.where(use_tail_guess, tail_guess, mean_guess)
+    x = jnp.clip(x, tiny, 1.0 - epsilon)
     low = jnp.zeros_like(q)
     high = jnp.ones_like(q)
 
-    def step(_: int, bounds: tuple[jax.Array, jax.Array]):
-        lower, upper = bounds
-        middle = 0.5 * (lower + upper)
-        move_lower = betainc(a, b, middle) < q
-        return jnp.where(move_lower, middle, lower), jnp.where(
-            move_lower, upper, middle
+    def step(
+        state: tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]
+    ) -> tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]:
+        """Apply one safeguarded Newton update."""
+
+        iteration, lower, upper, current, done = state
+        probability = betainc(shape_a, shape_b, current)
+        converged = jnp.abs(probability - target) <= tolerance
+        move_lower = probability < target
+        next_lower = jnp.where(move_lower, current, lower)
+        next_upper = jnp.where(move_lower, upper, current)
+        log_density = xlogy(shape_a - 1.0, current)
+        log_density += xlog1py(shape_b - 1.0, -current)
+        log_density -= betaln(shape_a, shape_b)
+        proposal = current - (probability - target) / jnp.exp(log_density)
+        midpoint = 0.5 * (next_lower + next_upper)
+        use_newton = (
+            jnp.isfinite(proposal)
+            & (proposal > next_lower)
+            & (proposal < next_upper)
+        )
+        next_x = jnp.where(use_newton, proposal, midpoint)
+        return (
+            iteration + 1,
+            jnp.where(done | converged, lower, next_lower),
+            jnp.where(done | converged, upper, next_upper),
+            jnp.where(done | converged, current, next_x),
+            done | converged,
         )
 
-    low, high = jax.lax.fori_loop(0, 64, step, (low, high))
-    value = 0.5 * (low + high)
-    value = jnp.where(q == 0.0, 0.0, value)
-    return jnp.where(q == 1.0, 1.0, value)
+    def continue_iteration(
+        state: tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]
+    ) -> jax.Array:
+        """Continue until all quantiles converge or the iteration cap is met."""
+
+        iteration, _, _, _, done = state
+        return (iteration < 64) & (~jnp.all(done))
+
+    initial_done = target == 0.0
+    _, low, high, x, _ = jax.lax.while_loop(
+        continue_iteration, step, (0, low, high, x, initial_done)
+    )
+    residual = jnp.abs(betainc(shape_a, shape_b, x) - target)
+    converged = (residual <= tolerance) | ((high - low) <= 8.0 * epsilon)
+    value = jnp.where(reflected, 1.0 - x, x)
+    value = jnp.where(target == 0.0, jnp.where(reflected, 1.0, 0.0), value)
+    return jnp.where(converged | (target == 0.0), value, jnp.nan)
 
 
+@_beta_ppf.defjvp
+def _beta_ppf_jvp(
+    a: float,
+    b: float,
+    primals: tuple[jax.Array],
+    tangents: tuple[jax.Array],
+) -> tuple[jax.Array, jax.Array]:
+    """Differentiate the Beta quantile with respect to probability.
+
+    Parameters
+    ----------
+    a, b : float
+        Non-differentiated positive shape parameters.
+    primals : tuple of jax.Array
+        Primal cumulative probabilities.
+    tangents : tuple of jax.Array
+        Probability tangents.
+
+    Returns
+    -------
+    value, tangent : tuple of jax.Array
+        Quantiles and their propagated tangents.
+    """
+
+    (q,) = primals
+    (q_dot,) = tangents
+    value = _beta_ppf(q, a, b)
+    log_density = xlogy(a - 1.0, value) + xlog1py(b - 1.0, -value)
+    log_density -= betaln(a, b)
+    return value, q_dot * jnp.exp(-log_density)
+
+
+@partial(jax.custom_jvp, nondiff_argnums=(1,))
 def _gamma_ppf(q: Any, a: float) -> jax.Array:
-    """Invert the regularized incomplete gamma with traceable bisection.
+    """Invert the regularized incomplete gamma with safeguarded Newton steps.
 
     Parameters
     ----------
@@ -233,32 +337,120 @@ def _gamma_ppf(q: Any, a: float) -> jax.Array:
     """
 
     q = jnp.asarray(q)
+    dtype = q.dtype
+    tiny = jnp.finfo(dtype).tiny
+    epsilon = jnp.finfo(dtype).eps
+    reflected = q > 0.5
+    target = jnp.where(reflected, 1.0 - q, q)
+    tolerance = 64.0 * epsilon * jnp.maximum(target, tiny)
+    safe_q = jnp.clip(q, epsilon, 1.0 - epsilon)
+    z = ndtri(safe_q)
+    correction = 1.0 - 1.0 / (9.0 * a) + z / (3.0 * math.sqrt(a))
+    central_guess = a * jnp.maximum(correction, epsilon) ** 3
+    lower_guess = jnp.exp(
+        (jnp.log(jnp.maximum(target, tiny)) + math.lgamma(a + 1.0)) / a
+    )
+    guess = jnp.where((~reflected) & (target < 0.2), lower_guess, central_guess)
+    small_shape_guess = jnp.exp(
+        (jnp.log(jnp.maximum(q, tiny)) + math.lgamma(a + 1.0)) / a
+    )
+    guess = jnp.where((a < 1.0) & (q < 0.95), small_shape_guess, guess)
     low = jnp.zeros_like(q)
-    high = jnp.full_like(q, max(1.0, a))
+    high = jnp.maximum(jnp.full_like(q, max(1.0, a)), 2.0 * guess)
 
     def expand(_: int, upper: jax.Array) -> jax.Array:
         """Expand upper brackets that remain below the target probability."""
 
-        return jnp.where(gammainc(a, upper) < q, 2.0 * upper, upper)
+        probability = jnp.where(reflected, gammaincc(a, upper), gammainc(a, upper))
+        needs_expansion = jnp.where(
+            reflected, probability > target, probability < target
+        )
+        return jnp.where(needs_expansion, 2.0 * upper, upper)
 
-    high = jax.lax.fori_loop(0, 64, expand, high)
+    high = jax.lax.fori_loop(0, 16, expand, high)
 
-    def bisect(
-        _: int, bounds: tuple[jax.Array, jax.Array]
-    ) -> tuple[jax.Array, jax.Array]:
-        """Apply one vectorized bisection iteration."""
+    x = jnp.clip(guess, tiny, high)
 
-        lower, upper = bounds
-        middle = 0.5 * (lower + upper)
-        move_lower = gammainc(a, middle) < q
-        return jnp.where(move_lower, middle, lower), jnp.where(
-            move_lower, upper, middle
+    def step(
+        state: tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]
+    ) -> tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]:
+        """Apply one safeguarded Newton update."""
+
+        iteration, lower, upper, current, done = state
+        probability = jnp.where(
+            reflected, gammaincc(a, current), gammainc(a, current)
+        )
+        converged = jnp.abs(probability - target) <= tolerance
+        move_lower = jnp.where(reflected, probability > target, probability < target)
+        next_lower = jnp.where(move_lower, current, lower)
+        next_upper = jnp.where(move_lower, upper, current)
+        log_density = xlogy(a - 1.0, current) - current - math.lgamma(a)
+        derivative = jnp.where(reflected, -jnp.exp(log_density), jnp.exp(log_density))
+        proposal = current - (probability - target) / derivative
+        midpoint = 0.5 * (next_lower + next_upper)
+        use_newton = (
+            jnp.isfinite(proposal)
+            & (proposal > next_lower)
+            & (proposal < next_upper)
+        )
+        next_x = jnp.where(use_newton, proposal, midpoint)
+        return (
+            iteration + 1,
+            jnp.where(done | converged, lower, next_lower),
+            jnp.where(done | converged, upper, next_upper),
+            jnp.where(done | converged, current, next_x),
+            done | converged,
         )
 
-    low, high = jax.lax.fori_loop(0, 80, bisect, (low, high))
-    value = 0.5 * (low + high)
-    value = jnp.where(q == 0.0, 0.0, value)
-    return jnp.where(q == 1.0, jnp.inf, value)
+    def continue_iteration(
+        state: tuple[int, jax.Array, jax.Array, jax.Array, jax.Array]
+    ) -> jax.Array:
+        """Continue until all quantiles converge or the iteration cap is met."""
+
+        iteration, _, _, _, done = state
+        return (iteration < 64) & (~jnp.all(done))
+
+    initial_done = (q == 0.0) | (q == 1.0)
+    _, low, high, x, _ = jax.lax.while_loop(
+        continue_iteration, step, (0, low, high, x, initial_done)
+    )
+    probability = jnp.where(reflected, gammaincc(a, x), gammainc(a, x))
+    converged = (jnp.abs(probability - target) <= tolerance) | (
+        (high - low) <= 8.0 * epsilon * jnp.maximum(1.0, x)
+    )
+    value = jnp.where(q == 0.0, 0.0, x)
+    value = jnp.where(q == 1.0, jnp.inf, value)
+    return jnp.where(converged | (q == 0.0) | (q == 1.0), value, jnp.nan)
+
+
+@_gamma_ppf.defjvp
+def _gamma_ppf_jvp(
+    a: float,
+    primals: tuple[jax.Array],
+    tangents: tuple[jax.Array],
+) -> tuple[jax.Array, jax.Array]:
+    """Differentiate the Gamma quantile with respect to probability.
+
+    Parameters
+    ----------
+    a : float
+        Non-differentiated positive shape parameter.
+    primals : tuple of jax.Array
+        Primal cumulative probabilities.
+    tangents : tuple of jax.Array
+        Probability tangents.
+
+    Returns
+    -------
+    value, tangent : tuple of jax.Array
+        Quantiles and their propagated tangents.
+    """
+
+    (q,) = primals
+    (q_dot,) = tangents
+    value = _gamma_ppf(q, a)
+    log_density = xlogy(a - 1.0, value) - value - math.lgamma(a)
+    return value, q_dot * jnp.exp(-log_density)
 
 
 @dataclass(frozen=True, slots=True)

@@ -155,12 +155,39 @@ def test_beta_known_cases_and_boundaries() -> None:
     assert singular.pdf(1.0) == 0.0
 
 
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [(0.01, 1.0), (0.1, 10.0), (0.5, 0.5), (10.0, 0.1), (100.0, 100.0)],
+)
+def test_scalar_beta_inverse_cdf_hard_grid(a, b) -> None:
+    """Safeguarded scalar Beta inversion agrees with SciPy across shapes."""
+
+    distribution = Beta(a, b)
+    reference = stats.beta(a, b)
+    for probability in (1e-12, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1.0 - 1e-9):
+        expected = reference.ppf(probability)
+        actual = distribution.ppf(probability)
+        assert actual == pytest.approx(expected, rel=2e-8, abs=2e-13)
+
+
 def test_gamma_known_cases_and_boundaries() -> None:
     distribution = Gamma(a=2.0, loc=1.0, scale=3.0)
     assert distribution.pdf(1.0) == 0.0
     assert distribution.pdf(4.0) == pytest.approx(math.exp(-1.0) / 3.0)
     assert distribution.cdf(4.0) == pytest.approx(1.0 - 2.0 / math.e)
     assert distribution.mean == 7.0
+
+
+@pytest.mark.parametrize("shape", [0.01, 0.1, 0.5, 1.0, 2.0, 10.0, 100.0])
+def test_scalar_gamma_inverse_cdf_hard_grid(shape) -> None:
+    """Safeguarded scalar Gamma inversion agrees with SciPy across shapes."""
+
+    distribution = Gamma(shape)
+    reference = stats.gamma(shape)
+    for probability in (1e-12, 1e-6, 1e-3, 0.1, 0.5, 0.9, 1.0 - 1e-9):
+        assert distribution.ppf(probability) == pytest.approx(
+            reference.ppf(probability), rel=2e-8, abs=2e-13
+        )
 
 
 def test_truncated_normal_is_renormalized() -> None:
