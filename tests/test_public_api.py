@@ -36,6 +36,7 @@ def test_public_api_selects_backend_once():
     assert isinstance(baldr.LogNormal(backend="numpy").pdf([1.0]), np.ndarray)
     assert isinstance(baldr.HalfNormal(backend="numpy").pdf([1.0]), np.ndarray)
     assert isinstance(baldr.Cauchy(backend="numpy").pdf([1.0]), np.ndarray)
+    assert isinstance(baldr.StudentT(backend="numpy").pdf([1.0]), np.ndarray)
     assert isinstance(baldr.Laplace(backend="numpy").pdf([1.0]), np.ndarray)
     assert isinstance(baldr.Weibull(backend="numpy").pdf([1.0]), np.ndarray)
 

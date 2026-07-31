@@ -78,7 +78,7 @@ The first extension adds analytic LogNormal, HalfNormal, Cauchy, Laplace, and
 Weibull distributions, followed by stable survival and logarithmic-tail
 methods across the common API.
 
-Beta and Gamma inverse-CDF hardening remains the next numerical priority. It
-will be developed as a dedicated benchmark-led change covering extreme shape
-parameters and probabilities, float32 and float64 behaviour, convergence
-reporting, and JAX gradients.
+Beta and Gamma inverse-CDF hardening added safeguarded Newton updates, direct
+upper-tail inversion, convergence reporting, and JAX quantile gradients. The
+same inverse-Beta machinery then supports Student's t quantiles across all
+three backends without introducing another numerical root finder.

@@ -36,6 +36,7 @@ __all__ = [
     "Laplace",
     "LogNormal",
     "Normal",
+    "StudentT",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
@@ -1045,6 +1046,102 @@ class HalfNormal(_AnalyticDistribution):
 
     def _inverse(self, q: jax.Array) -> jax.Array:
         return self.loc + self.scale * ndtri(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class StudentT(_AnalyticDistribution):
+    """Student's t distribution with JAX-traceable methods.
+
+    Parameters
+    ----------
+    df : float, default=1.0
+        Positive degrees of freedom.
+    loc : float, default=0.0
+        Distribution location.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    df: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache the normalization constant."""
+
+        df = _positive(self.df, "df")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        normalization = math.lgamma(0.5 * (df + 1.0)) - math.lgamma(0.5 * df)
+        normalization -= 0.5 * math.log(df * math.pi) + math.log(scale)
+        object.__setattr__(self, "df", df)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_log_normalization", normalization)
+
+    @property
+    def mean(self) -> float:
+        """Return the mean, or NaN when it is undefined."""
+
+        return self.loc if self.df > 1.0 else math.nan
+
+    @property
+    def median(self) -> float:
+        """Return the distribution median."""
+
+        return self.loc
+
+    def _log_density(self, x: Any) -> jax.Array:
+        """Evaluate the traceable log-density kernel."""
+
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return self._log_normalization - 0.5 * (self.df + 1.0) * jnp.log1p(
+            z * z / self.df
+        )
+
+    def _tail_probability(self, z: jax.Array) -> jax.Array:
+        """Evaluate the smaller symmetric tail at standardized values."""
+
+        ratio = self.df / (self.df + z * z)
+        return 0.5 * betainc(0.5 * self.df, 0.5, ratio)
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        """Evaluate the traceable cumulative-distribution kernel."""
+
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return jnp.where(z < 0.0, tail, 1.0 - tail)
+
+    def _sf(self, x: Any) -> jax.Array:
+        """Evaluate the survival function directly from the smaller tail."""
+
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return jnp.where(z > 0.0, tail, 1.0 - tail)
+
+    def _logcdf(self, x: Any) -> jax.Array:
+        """Evaluate the logarithmic CDF without subtractive tail loss."""
+
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return jnp.where(z < 0.0, jnp.log(tail), jnp.log1p(-tail))
+
+    def _logsf(self, x: Any) -> jax.Array:
+        """Evaluate the logarithmic survival function directly."""
+
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return jnp.where(z > 0.0, jnp.log(tail), jnp.log1p(-tail))
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        """Evaluate the traceable inverse-CDF kernel through Beta inversion."""
+
+        tail = 2.0 * jnp.minimum(q, 1.0 - q)
+        ratio = _beta_ppf(tail, 0.5 * self.df, 0.5)
+        magnitude = jnp.sqrt(self.df * (1.0 / ratio - 1.0))
+        value = self.loc + self.scale * jnp.where(q < 0.5, -magnitude, magnitude)
+        return jnp.where(q == 0.5, self.loc, value)
 
 
 @dataclass(frozen=True, slots=True)

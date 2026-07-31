@@ -16,6 +16,7 @@ The following names are importable directly from `baldr`:
 - `LogNormal`
 - `HalfNormal`
 - `Cauchy`
+- `StudentT`
 - `Laplace`
 - `Weibull`
 - `TruncatedNormal`

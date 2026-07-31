@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add Student's t distribution to the scalar, NumPy, and JAX backends, with
+  stable symmetric tails and inverse CDFs built on the hardened Beta solver.
 - Replace fixed-loop JAX Beta and Gamma inverse-CDF bisection with safeguarded
   Newton solvers, direct upper-tail inversion, and quantile gradients.
 - Accelerate the dependency-free scalar Gamma inverse CDF with safeguarded
