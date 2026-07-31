@@ -21,6 +21,7 @@ __all__ = [
     "Laplace",
     "LogNormal",
     "Normal",
+    "StudentT",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
@@ -1077,6 +1078,114 @@ class HalfNormal(_AnalyticDistribution):
         if endpoint is not None:
             return endpoint
         return self.loc + self.scale * _STANDARD_NORMAL.inv_cdf(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class StudentT(_AnalyticDistribution):
+    """Student's t distribution using SciPy's parameter convention.
+
+    Parameters
+    ----------
+    df : float, default=1.0
+        Positive degrees of freedom.
+    loc : float, default=0.0
+        Distribution location.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    df: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+    _log_beta: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache normalization terms."""
+
+        df = _positive(self.df, "df")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        log_beta = math.lgamma(0.5 * df) + math.lgamma(0.5)
+        log_beta -= math.lgamma(0.5 * (df + 1.0))
+        object.__setattr__(self, "df", df)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_log_beta", log_beta)
+        object.__setattr__(
+            self,
+            "_log_normalization",
+            -0.5 * math.log(df) - log_beta - math.log(scale),
+        )
+
+    @property
+    def mean(self) -> float:
+        """Return the mean, or NaN when it is undefined."""
+
+        return self.loc if self.df > 1.0 else math.nan
+
+    @property
+    def median(self) -> float:
+        """Return the distribution median."""
+
+        return self.loc
+
+    def _log_density(self, x: float) -> float:
+        """Evaluate the scalar log-density kernel."""
+
+        z = (x - self.loc) / self.scale
+        return self._log_normalization - 0.5 * (self.df + 1.0) * math.log1p(
+            z * z / self.df
+        )
+
+    def _tail_probability(self, z: float) -> float:
+        """Evaluate the smaller symmetric tail at absolute standardized value."""
+
+        ratio = self.df / (self.df + z * z)
+        return 0.5 * _regularized_beta(
+            ratio, 0.5 * self.df, 0.5, self._log_beta
+        )
+
+    def _cumulative(self, x: float) -> float:
+        """Evaluate the scalar cumulative-distribution kernel."""
+
+        z = (x - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return tail if z < 0.0 else 1.0 - tail
+
+    def _sf(self, x: float) -> float:
+        """Evaluate the survival function directly from the smaller tail."""
+
+        z = (x - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return tail if z > 0.0 else 1.0 - tail
+
+    def _logcdf(self, x: float) -> float:
+        """Evaluate the logarithmic CDF without subtractive tail loss."""
+
+        z = (x - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return _log_probability(tail) if z < 0.0 else math.log1p(-tail)
+
+    def _logsf(self, x: float) -> float:
+        """Evaluate the logarithmic survival function directly."""
+
+        z = (x - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return _log_probability(tail) if z > 0.0 else math.log1p(-tail)
+
+    def _quantile(self, q: float) -> float:
+        """Evaluate the scalar inverse-CDF kernel through Beta inversion."""
+
+        endpoint = _quantile_endpoint(q, -math.inf, math.inf)
+        if endpoint is not None:
+            return endpoint
+        if q == 0.5:
+            return self.loc
+        tail = 2.0 * min(q, 1.0 - q)
+        ratio = Beta(0.5 * self.df, 0.5).ppf(tail)
+        magnitude = math.sqrt(self.df * (1.0 / ratio - 1.0))
+        return self.loc + self.scale * (-magnitude if q < 0.5 else magnitude)
 
 
 @dataclass(frozen=True, slots=True)

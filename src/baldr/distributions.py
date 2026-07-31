@@ -19,6 +19,7 @@ __all__ = [
     "Laplace",
     "LogNormal",
     "Normal",
+    "StudentT",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
@@ -247,6 +248,35 @@ def Cauchy(loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar")
     """
 
     return _module(backend).Cauchy(loc=loc, scale=scale)
+
+
+def StudentT(
+    df: float = 1.0,
+    loc: float = 0.0,
+    scale: float = 1.0,
+    *,
+    backend: Backend = "scalar",
+) -> Any:
+    """Construct a Student's t distribution for the selected backend.
+
+    Parameters
+    ----------
+    df : float, default=1.0
+        Positive degrees of freedom.
+    loc : float, default=0.0
+        Distribution location.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Student's t distribution implemented by the selected backend.
+    """
+
+    return _module(backend).StudentT(df=df, loc=loc, scale=scale)
 
 
 def Laplace(

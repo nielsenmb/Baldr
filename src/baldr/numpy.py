@@ -37,6 +37,7 @@ __all__ = [
     "Laplace",
     "LogNormal",
     "Normal",
+    "StudentT",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
@@ -801,6 +802,105 @@ class HalfNormal(_AnalyticDistribution):
 
     def _quantile(self, q: np.ndarray) -> np.ndarray:
         return self.loc + self.scale * ndtri(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class StudentT(_AnalyticDistribution):
+    """Student's t distribution with broadcasting NumPy methods.
+
+    Parameters
+    ----------
+    df : float, default=1.0
+        Positive degrees of freedom.
+    loc : float, default=0.0
+        Distribution location.
+    scale : float, default=1.0
+        Positive scale parameter.
+    """
+
+    df: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+    _log_normalization: float = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate parameters and cache the normalization constant."""
+
+        df = _positive(self.df, "df")
+        loc = _finite(self.loc, "loc")
+        scale = _positive(self.scale, "scale")
+        normalization = gammaln(0.5 * (df + 1.0)) - gammaln(0.5 * df)
+        normalization -= 0.5 * math.log(df * math.pi) + math.log(scale)
+        object.__setattr__(self, "df", df)
+        object.__setattr__(self, "loc", loc)
+        object.__setattr__(self, "scale", scale)
+        object.__setattr__(self, "_log_normalization", float(normalization))
+
+    @property
+    def mean(self) -> float:
+        """Return the mean, or NaN when it is undefined."""
+
+        return self.loc if self.df > 1.0 else math.nan
+
+    @property
+    def median(self) -> float:
+        """Return the distribution median."""
+
+        return self.loc
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        """Evaluate the vectorized log-density kernel."""
+
+        z = (np.asarray(x) - self.loc) / self.scale
+        return self._log_normalization - 0.5 * (self.df + 1.0) * np.log1p(
+            z * z / self.df
+        )
+
+    def _tail_probability(self, z: np.ndarray) -> np.ndarray:
+        """Evaluate the smaller symmetric tail at absolute standardized values."""
+
+        ratio = self.df / (self.df + z * z)
+        return 0.5 * betainc(0.5 * self.df, 0.5, ratio)
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        """Evaluate the vectorized cumulative-distribution kernel."""
+
+        z = (np.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return np.where(z < 0.0, tail, 1.0 - tail)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        """Evaluate the survival function directly from the smaller tail."""
+
+        z = (np.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        return np.where(z > 0.0, tail, 1.0 - tail)
+
+    def _logcdf(self, x: Any) -> np.ndarray:
+        """Evaluate the logarithmic CDF without subtractive tail loss."""
+
+        z = (np.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        with np.errstate(divide="ignore"):
+            return np.where(z < 0.0, np.log(tail), np.log1p(-tail))
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        """Evaluate the logarithmic survival function directly."""
+
+        z = (np.asarray(x) - self.loc) / self.scale
+        tail = self._tail_probability(z)
+        with np.errstate(divide="ignore"):
+            return np.where(z > 0.0, np.log(tail), np.log1p(-tail))
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        """Evaluate the vectorized inverse-CDF kernel through Beta inversion."""
+
+        tail = 2.0 * np.minimum(q, 1.0 - q)
+        ratio = betaincinv(0.5 * self.df, 0.5, tail)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            magnitude = np.sqrt(self.df * (1.0 / ratio - 1.0))
+        value = self.loc + self.scale * np.where(q < 0.5, -magnitude, magnitude)
+        return np.where(q == 0.5, self.loc, value)
 
 
 @dataclass(frozen=True, slots=True)

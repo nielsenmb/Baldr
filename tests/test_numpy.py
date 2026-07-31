@@ -16,6 +16,7 @@ from baldr.numpy import (
     Laplace,
     LogNormal,
     Normal,
+    StudentT,
     TruncatedNormal,
     TruncatedPowerLaw,
     TruncatedSine,
@@ -34,6 +35,7 @@ from baldr.numpy import (
         ),
         (HalfNormal(-1.0, 2.5), stats.halfnorm(-1.0, 2.5), [-2.0, -1.0, 0.0, 5.0]),
         (Cauchy(1.0, 2.5), stats.cauchy(1.0, 2.5), [-20.0, 0.0, 1.0, 20.0]),
+        (StudentT(2.5, 1.0, 2.5), stats.t(2.5, 1.0, 2.5), [-20.0, 0.0, 1.0, 20.0]),
         (Laplace(1.0, 2.5), stats.laplace(1.0, 2.5), [-20.0, 0.0, 1.0, 20.0]),
         (
             Weibull(1.7, -1.0, 2.5),
@@ -86,6 +88,7 @@ def test_all_distributions_expose_tail_methods():
         LogNormal(),
         HalfNormal(),
         Cauchy(),
+        StudentT(2.5),
         Laplace(),
         Weibull(),
     ]

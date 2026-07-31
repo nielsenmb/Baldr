@@ -15,6 +15,7 @@ from baldr.scalar import (
     Laplace,
     LogNormal,
     Normal,
+    StudentT,
     TruncatedNormal,
     TruncatedPowerLaw,
     TruncatedSine,
@@ -178,6 +179,24 @@ def test_gamma_known_cases_and_boundaries() -> None:
     assert distribution.mean == 7.0
 
 
+@pytest.mark.parametrize("df", [0.1, 0.5, 1.0, 2.0, 10.0, 100.0])
+def test_student_t_matches_scipy(df) -> None:
+    """Scalar Student's t methods agree with SciPy across tail weights."""
+
+    distribution = StudentT(df=df, loc=-1.0, scale=2.5)
+    reference = stats.t(df=df, loc=-1.0, scale=2.5)
+    for point in (-100.0, -3.0, -1.0, 2.0, 100.0):
+        assert distribution.logpdf(point) == pytest.approx(reference.logpdf(point))
+        assert distribution.cdf(point) == pytest.approx(reference.cdf(point))
+        assert distribution.sf(point) == pytest.approx(reference.sf(point))
+        assert distribution.logcdf(point) == pytest.approx(reference.logcdf(point))
+        assert distribution.logsf(point) == pytest.approx(reference.logsf(point))
+    for probability in (0.0, 1e-9, 0.01, 0.5, 0.99, 1.0 - 1e-9, 1.0):
+        assert distribution.ppf(probability) == pytest.approx(
+            reference.ppf(probability), rel=2e-8, abs=2e-12
+        )
+
+
 @pytest.mark.parametrize("shape", [0.01, 0.1, 0.5, 1.0, 2.0, 10.0, 100.0])
 def test_scalar_gamma_inverse_cdf_hard_grid(shape) -> None:
     """Safeguarded scalar Gamma inversion agrees with SciPy across shapes."""
@@ -224,6 +243,7 @@ def test_discrete_uniform_corrects_pbjam_logpdf_bug() -> None:
         lambda: Beta(b=-1.0),
         lambda: Exponential(scale=math.inf),
         lambda: Gamma(a=0.0),
+        lambda: StudentT(df=0.0),
         lambda: TruncatedNormal(0.0, 1.0, 2.0, 1.0),
         lambda: TruncatedPowerLaw(2.0, 0.0, 1.0),
         lambda: DiscreteUniform(3, 3),
@@ -242,6 +262,7 @@ def test_invalid_parameters_fail_at_construction(constructor) -> None:
         Beta(),
         Exponential(),
         Gamma(),
+        StudentT(),
         TruncatedNormal(0.0, 1.0, -1.0, 1.0),
         TruncatedPowerLaw(1.0, 0.1, 10.0),
         TruncatedSine(),

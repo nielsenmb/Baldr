@@ -161,6 +161,7 @@ def test_float_width_is_preserved(dtype):
         (baldr_jax.LogNormal(0.7, -1.0, 2.5), stats.lognorm(0.7, -1.0, 2.5)),
         (baldr_jax.HalfNormal(-1.0, 2.5), stats.halfnorm(-1.0, 2.5)),
         (baldr_jax.Cauchy(1.0, 2.5), stats.cauchy(1.0, 2.5)),
+        (baldr_jax.StudentT(2.5, 1.0, 2.5), stats.t(2.5, 1.0, 2.5)),
         (baldr_jax.Laplace(1.0, 2.5), stats.laplace(1.0, 2.5)),
         (baldr_jax.Weibull(1.7, -1.0, 2.5), stats.weibull_min(1.7, -1.0, 2.5)),
     ],
@@ -193,3 +194,20 @@ def test_discrete_uniform_and_beta_boundaries():
     beta = baldr_jax.Beta(0.5, 2.0)
     assert beta.pdf(0.0) == math.inf
     assert beta.pdf(1.0) == 0.0
+
+
+@pytest.mark.parametrize("df", [0.1, 0.5, 1.0, 2.0, 10.0, 100.0])
+def test_student_t_inverse_cdf_and_gradient(df):
+    """Student's t quantiles agree with SciPy and retain useful gradients."""
+
+    distribution = baldr_jax.StudentT(df=df, loc=-1.0, scale=2.5)
+    probabilities = jnp.asarray([1e-6, 0.01, 0.2, 0.5, 0.8, 0.99, 1.0 - 1e-6])
+    actual = jax.jit(distribution.ppf)(probabilities)
+    expected = stats.t(df=df, loc=-1.0, scale=2.5).ppf(np.asarray(probabilities))
+    np.testing.assert_allclose(actual, expected, rtol=2e-8, atol=2e-10)
+    probability = 0.8
+    quantile = distribution.ppf(probability)
+    derivative = jax.grad(distribution.ppf)(probability)
+    np.testing.assert_allclose(
+        derivative, 1.0 / distribution.pdf(quantile), rtol=2e-8
+    )
