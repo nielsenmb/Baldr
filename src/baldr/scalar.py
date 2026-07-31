@@ -544,31 +544,54 @@ class Beta(_TailMethods):
         if endpoint is not None:
             return endpoint
 
+        reflected = q > 0.5
+        target = 1.0 - q if reflected else q
+        shape_a = self.b if reflected else self.a
+        shape_b = self.a if reflected else self.b
         low = 0.0
         high = 1.0
-        x = self.a / (self.a + self.b)
-        tolerance = max(2e-14, 2e-12 * min(q, 1.0 - q))
+        mean_guess = shape_a / (shape_a + shape_b)
+        use_tail_guess = shape_a < 1.0 or (target <= 0.25 and shape_b >= 1.0)
+        if use_tail_guess:
+            log_beta = (
+                math.lgamma(shape_a)
+                + math.lgamma(shape_b)
+                - math.lgamma(shape_a + shape_b)
+            )
+            log_guess = (
+                math.log(target) + math.log(shape_a) + log_beta
+            ) / shape_a
+            minimum = math.nextafter(0.0, 1.0)
+            if log_guess < math.log(minimum):
+                result = 1.0 if reflected else 0.0
+                return self.loc + self.scale * result
+            x = math.exp(log_guess)
+        else:
+            x = mean_guess
+        x = min(max(x, math.nextafter(0.0, 1.0)), math.nextafter(1.0, 0.0))
+        tolerance = 6e-14 * target
         for _ in range(100):
-            value = _regularized_beta(x, self.a, self.b, self._log_beta)
-            error = value - q
+            value = _regularized_beta(x, shape_a, shape_b, self._log_beta)
+            error = value - target
             if abs(error) <= tolerance:
-                break
-            if value < q:
+                result = 1.0 - x if reflected else x
+                return self.loc + self.scale * result
+            if value < target:
                 low = x
             else:
                 high = x
-            log_density = self._log_normalization + math.log(self.scale)
-            log_density += (self.a - 1.0) * math.log(x)
-            log_density += (self.b - 1.0) * math.log1p(-x)
+            log_density = -self._log_beta
+            log_density += (shape_a - 1.0) * math.log(x)
+            log_density += (shape_b - 1.0) * math.log1p(-x)
             density = math.exp(log_density)
             proposal = x - error / density if density > 0.0 else math.nan
             if not low < proposal < high or proposal == x:
                 proposal = 0.5 * (low + high)
             if high - low <= 2e-15:
-                x = proposal
-                break
+                result = 1.0 - proposal if reflected else proposal
+                return self.loc + self.scale * result
             x = proposal
-        return self.loc + self.scale * x
+        raise RuntimeError("Beta inverse CDF failed to converge")
 
 
 @dataclass(frozen=True, slots=True)
@@ -744,17 +767,56 @@ class Gamma(_TailMethods):
         if endpoint is not None:
             return endpoint
 
+        reflected = q > 0.5
+        target = 1.0 - q if reflected else q
+
+        def probability(value: float) -> float:
+            """Evaluate the numerically stable tail used by the solver."""
+
+            if reflected:
+                return _regularized_gamma_upper(self.a, value)
+            return _regularized_gamma(self.a, value)
+
         low = 0.0
         high = max(1.0, self.a)
-        while _regularized_gamma(self.a, high) < q:
+        needs_expansion = (
+            probability(high) > target
+            if reflected
+            else probability(high) < target
+        )
+        while needs_expansion:
             high *= 2.0
-        for _ in range(96):
-            middle = 0.5 * (low + high)
-            if _regularized_gamma(self.a, middle) < q:
-                low = middle
+            needs_expansion = (
+                probability(high) > target
+                if reflected
+                else probability(high) < target
+            )
+        x = min(self.a, high)
+        tolerance = 6e-14 * target
+        for _ in range(64):
+            current_probability = probability(x)
+            error = current_probability - target
+            if abs(error) <= tolerance:
+                return self.loc + self.scale * x
+            move_lower = (
+                current_probability > target
+                if reflected
+                else current_probability < target
+            )
+            if move_lower:
+                low = x
             else:
-                high = middle
-        return self.loc + self.scale * 0.5 * (low + high)
+                high = x
+            log_density = (self.a - 1.0) * math.log(x) - x - math.lgamma(self.a)
+            density = math.exp(log_density)
+            derivative = -density if reflected else density
+            proposal = x - error / derivative if density > 0.0 else math.nan
+            if not low < proposal < high or proposal == x:
+                proposal = 0.5 * (low + high)
+            if high - low <= 2e-14 * max(1.0, x):
+                return self.loc + self.scale * proposal
+            x = proposal
+        raise RuntimeError("Gamma inverse CDF failed to converge")
 
 
 @dataclass(frozen=True, slots=True)
