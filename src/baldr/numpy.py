@@ -17,8 +17,10 @@ from scipy.special import (
     betaincinv,
     betaln,
     gammainc,
+    gammaincc,
     gammaincinv,
     gammaln,
+    log_ndtr,
     ndtr,
     ndtri,
     xlog1py,
@@ -27,14 +29,19 @@ from scipy.special import (
 
 __all__ = [
     "Beta",
+    "Cauchy",
     "DiscreteUniform",
     "Exponential",
     "Gamma",
+    "HalfNormal",
+    "Laplace",
+    "LogNormal",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
+    "Weibull",
     "beta",
     "gamma",
     "normal",
@@ -44,6 +51,138 @@ __all__ = [
 ]
 
 _LOG_TWO_PI = math.log(2.0 * math.pi)
+
+
+class _TailMethods:
+    """Provide survival and logarithmic cumulative methods."""
+
+    def sf(self, x: Any) -> np.ndarray:
+        """Evaluate the survival function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Upper-tail probabilities.
+        """
+
+        survival = getattr(self, "_sf", None)
+        if survival is not None:
+            return survival(x)
+        return np.clip(1.0 - self.cdf(x), 0.0, 1.0)
+
+    def logcdf(self, x: Any) -> np.ndarray:
+        """Evaluate the logarithm of the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Logarithmic lower-tail probabilities.
+        """
+
+        logarithm = getattr(self, "_logcdf", None)
+        if logarithm is not None:
+            return logarithm(x)
+        with np.errstate(divide="ignore"):
+            return np.log(self.cdf(x))
+
+    def logsf(self, x: Any) -> np.ndarray:
+        """Evaluate the logarithm of the survival function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Logarithmic upper-tail probabilities.
+        """
+
+        logarithm = getattr(self, "_logsf", None)
+        if logarithm is not None:
+            return logarithm(x)
+        with np.errstate(divide="ignore"):
+            return np.log(self.sf(x))
+
+
+class _AnalyticDistribution(_TailMethods):
+    """Expose the common array API for analytic distributions."""
+
+    def logpdf(self, x: Any) -> np.ndarray:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Log-density at each point.
+        """
+
+        return self._log_density(x)
+
+    def pdf(self, x: Any) -> np.ndarray:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Probability density at each point.
+        """
+
+        return np.exp(self._log_density(x))
+
+    def cdf(self, x: Any) -> np.ndarray:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        numpy.ndarray
+            Lower-tail probabilities.
+        """
+
+        return self._cumulative(x)
+
+    def ppf(self, q: Any) -> np.ndarray:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : array-like
+            Cumulative probabilities in ``[0, 1]``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Distribution quantiles.
+        """
+
+        q, valid = _valid_quantile(q)
+        return np.where(valid, self._quantile(q), np.nan)
 
 
 def _positive(value: float, name: str) -> float:
@@ -66,7 +205,7 @@ def _valid_quantile(q: Any) -> tuple[np.ndarray, np.ndarray]:
 
 
 @dataclass(frozen=True, slots=True)
-class Normal:
+class Normal(_TailMethods):
     """Normal distribution with broadcasting evaluation methods."""
 
     loc: float = 0.0
@@ -104,6 +243,15 @@ class Normal:
     def cdf(self, x: Any) -> np.ndarray:
         return ndtr((np.asarray(x) - self.loc) * self._inverse_scale)
 
+    def _sf(self, x: Any) -> np.ndarray:
+        return ndtr(-(np.asarray(x) - self.loc) * self._inverse_scale)
+
+    def _logcdf(self, x: Any) -> np.ndarray:
+        return log_ndtr((np.asarray(x) - self.loc) * self._inverse_scale)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        return log_ndtr(-(np.asarray(x) - self.loc) * self._inverse_scale)
+
     def ppf(self, q: Any) -> np.ndarray:
         q, valid = _valid_quantile(q)
         value = self.loc + self.scale * ndtri(q)
@@ -111,7 +259,7 @@ class Normal:
 
 
 @dataclass(frozen=True, slots=True)
-class Uniform:
+class Uniform(_TailMethods):
     """Continuous uniform distribution on ``[loc, loc + scale]``."""
 
     loc: float = 0.0
@@ -143,12 +291,13 @@ class Uniform:
 
     def logpdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
-        return np.where(
-            (x >= self.loc) & (x <= self.high), self._log_density, -np.inf
-        )
+        return np.where((x >= self.loc) & (x <= self.high), self._log_density, -np.inf)
 
     def cdf(self, x: Any) -> np.ndarray:
         return np.clip((np.asarray(x) - self.loc) / self.scale, 0.0, 1.0)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        return np.clip((self.high - np.asarray(x)) / self.scale, 0.0, 1.0)
 
     def ppf(self, q: Any) -> np.ndarray:
         q, valid = _valid_quantile(q)
@@ -156,7 +305,7 @@ class Uniform:
 
 
 @dataclass(frozen=True, slots=True)
-class Beta:
+class Beta(_TailMethods):
     """Beta distribution transformed to ``[loc, loc + scale]``."""
 
     a: float = 1.0
@@ -204,6 +353,14 @@ class Beta:
             y <= 0.0, 0.0, np.where(y >= 1.0, 1.0, betainc(self.a, self.b, y))
         )
 
+    def _sf(self, x: Any) -> np.ndarray:
+        y = (np.asarray(x) - self.loc) / self.scale
+        return np.where(
+            y <= 0.0,
+            1.0,
+            np.where(y >= 1.0, 0.0, betainc(self.b, self.a, 1.0 - y)),
+        )
+
     def ppf(self, q: Any) -> np.ndarray:
         q, valid = _valid_quantile(q)
         value = self.loc + self.scale * betaincinv(self.a, self.b, q)
@@ -211,7 +368,7 @@ class Beta:
 
 
 @dataclass(frozen=True, slots=True)
-class Exponential:
+class Exponential(_TailMethods):
     """Exponential distribution using the SciPy ``scale`` convention."""
 
     scale: float = 1.0
@@ -234,9 +391,7 @@ class Exponential:
 
     def logpdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
-        return np.where(
-            x >= 0.0, -x * self._inverse_scale - self._log_scale, -np.inf
-        )
+        return np.where(x >= 0.0, -x * self._inverse_scale - self._log_scale, -np.inf)
 
     def pdf(self, x: Any) -> np.ndarray:
         return np.exp(self.logpdf(x))
@@ -244,6 +399,14 @@ class Exponential:
     def cdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
         return np.where(x > 0.0, -np.expm1(-x * self._inverse_scale), 0.0)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x >= 0.0, np.exp(-x * self._inverse_scale), 1.0)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x >= 0.0, -x * self._inverse_scale, 0.0)
 
     def ppf(self, q: Any) -> np.ndarray:
         q, valid = _valid_quantile(q)
@@ -253,7 +416,7 @@ class Exponential:
 
 
 @dataclass(frozen=True, slots=True)
-class Gamma:
+class Gamma(_TailMethods):
     """Gamma distribution with broadcasting NumPy methods.
 
     Parameters
@@ -355,6 +518,10 @@ class Gamma:
         y = (np.asarray(x) - self.loc) * self._inverse_scale
         return np.where(y > 0.0, gammainc(self.a, y), 0.0)
 
+    def _sf(self, x: Any) -> np.ndarray:
+        y = (np.asarray(x) - self.loc) * self._inverse_scale
+        return np.where(y > 0.0, gammaincc(self.a, y), 1.0)
+
     def ppf(self, q: Any) -> np.ndarray:
         """Evaluate the quantile function.
 
@@ -375,7 +542,7 @@ class Gamma:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedNormal:
+class TruncatedNormal(_TailMethods):
     """Normal distribution restricted to ``[low, high]``."""
 
     loc: float
@@ -425,7 +592,7 @@ class TruncatedNormal:
 
     def cdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
-        value = (ndtr((x - self.loc) / self.scale) - self._cdf_low)
+        value = ndtr((x - self.loc) / self.scale) - self._cdf_low
         value /= self._cdf_width
         return np.clip(value, 0.0, 1.0)
 
@@ -439,7 +606,7 @@ class TruncatedNormal:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedPowerLaw:
+class TruncatedPowerLaw(_TailMethods):
     """Density proportional to ``x**(-alpha)`` on ``[low, high]``."""
 
     alpha: float
@@ -500,14 +667,12 @@ class TruncatedPowerLaw:
         if self._log_uniform:
             value = np.exp(self._lower_term + q * self._width_term)
         else:
-            value = (self._lower_term + q * self._width_term) ** (
-                1.0 / self._power
-            )
+            value = (self._lower_term + q * self._width_term) ** (1.0 / self._power)
         return np.where(valid, value, np.nan)
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedSine:
+class TruncatedSine(_TailMethods):
     """Sine density on the interval ``[0, pi / 2]``."""
 
     @property
@@ -520,9 +685,7 @@ class TruncatedSine:
 
     def pdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
-        return np.where(
-            (x >= 0.0) & (x <= math.pi / 2.0), np.sin(x), 0.0
-        )
+        return np.where((x >= 0.0) & (x <= math.pi / 2.0), np.sin(x), 0.0)
 
     def logpdf(self, x: Any) -> np.ndarray:
         x = np.asarray(x)
@@ -544,7 +707,247 @@ class TruncatedSine:
 
 
 @dataclass(frozen=True, slots=True)
-class DiscreteUniform:
+class LogNormal(_AnalyticDistribution):
+    """Log-normal distribution using SciPy's shape, location, and scale."""
+
+    s: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "s", _positive(self.s, "s"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.exp(0.5 * self.s**2)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale
+
+    def _z(self, x: Any) -> np.ndarray:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.log((np.asarray(x) - self.loc) / self.scale) / self.s
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        z = self._z(x)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            value = -0.5 * z * z - np.log(x - self.loc)
+        value -= math.log(self.s) + 0.5 * _LOG_TWO_PI
+        return np.where(x > self.loc, value, -np.inf)
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x > self.loc, ndtr(self._z(x)), 0.0)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x > self.loc, ndtr(-self._z(x)), 1.0)
+
+    def _logcdf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x > self.loc, log_ndtr(self._z(x)), -np.inf)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        return np.where(x > self.loc, log_ndtr(-self._z(x)), 0.0)
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        return self.loc + self.scale * np.exp(self.s * ndtri(q))
+
+
+@dataclass(frozen=True, slots=True)
+class HalfNormal(_AnalyticDistribution):
+    """Half-normal distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.sqrt(2.0 / math.pi)
+
+    @property
+    def median(self) -> float:
+        return float(self.ppf(0.5))
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        z = (x - self.loc) / self.scale
+        value = -0.5 * z * z + 0.5 * math.log(2.0 / math.pi)
+        return np.where(x >= self.loc, value - math.log(self.scale), -np.inf)
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        z = (x - self.loc) / self.scale
+        return np.where(x > self.loc, 2.0 * ndtr(z) - 1.0, 0.0)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        z = (x - self.loc) / self.scale
+        return np.where(x > self.loc, 2.0 * ndtr(-z), 1.0)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        x = np.asarray(x)
+        z = (x - self.loc) / self.scale
+        return np.where(x > self.loc, math.log(2.0) + log_ndtr(-z), 0.0)
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        return self.loc + self.scale * ndtri(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class Cauchy(_AnalyticDistribution):
+    """Cauchy distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return math.nan
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        return -math.log(math.pi * self.scale) - np.log1p(z * z)
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        return 0.5 + np.arctan(z) / math.pi
+
+    def _sf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        reciprocal = np.divide(1.0, z, out=np.zeros_like(z), where=z != 0.0)
+        positive = np.arctan(reciprocal) / math.pi
+        return np.where(z > 0.0, positive, 0.5 - np.arctan(z) / math.pi)
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        value = self.loc + self.scale * np.tan(math.pi * (q - 0.5))
+        value = np.where(q == 0.0, -np.inf, value)
+        return np.where(q == 1.0, np.inf, value)
+
+
+@dataclass(frozen=True, slots=True)
+class Laplace(_AnalyticDistribution):
+    """Laplace distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        value = -np.abs(np.asarray(x) - self.loc) / self.scale
+        return value - math.log(2.0 * self.scale)
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        return np.where(z <= 0.0, 0.5 * np.exp(z), 1.0 - 0.5 * np.exp(-z))
+
+    def _sf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        return np.where(z <= 0.0, 1.0 - 0.5 * np.exp(z), 0.5 * np.exp(-z))
+
+    def _logcdf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(invalid="ignore"):
+            positive = np.log1p(-0.5 * np.exp(-z))
+        return np.where(z <= 0.0, math.log(0.5) + z, positive)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(invalid="ignore"):
+            negative = np.log1p(-0.5 * np.exp(z))
+        return np.where(z <= 0.0, negative, math.log(0.5) - z)
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        with np.errstate(divide="ignore"):
+            lower = self.loc + self.scale * np.log(2.0 * q)
+            upper = self.loc - self.scale * np.log(2.0 * (1.0 - q))
+        return np.where(q < 0.5, lower, upper)
+
+
+@dataclass(frozen=True, slots=True)
+class Weibull(_AnalyticDistribution):
+    """Minimum Weibull distribution using SciPy's shape, location, and scale."""
+
+    c: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "c", _positive(self.c, "c"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.gamma(1.0 + 1.0 / self.c)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale * math.log(2.0) ** (1.0 / self.c)
+
+    def _log_density(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(divide="ignore", invalid="ignore"):
+            value = math.log(self.c / self.scale)
+            value += (self.c - 1.0) * np.log(z) - z**self.c
+        boundary = -np.inf if self.c > 1.0 else np.inf
+        if self.c == 1.0:
+            boundary = -math.log(self.scale)
+        return np.where(z < 0.0, -np.inf, np.where(z == 0.0, boundary, value))
+
+    def _cumulative(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(invalid="ignore"):
+            value = -np.expm1(-(z**self.c))
+        return np.where(z > 0.0, value, 0.0)
+
+    def _sf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(invalid="ignore"):
+            value = np.exp(-(z**self.c))
+        return np.where(z > 0.0, value, 1.0)
+
+    def _logsf(self, x: Any) -> np.ndarray:
+        z = (np.asarray(x) - self.loc) / self.scale
+        with np.errstate(invalid="ignore"):
+            value = -(z**self.c)
+        return np.where(z > 0.0, value, 0.0)
+
+    def _quantile(self, q: np.ndarray) -> np.ndarray:
+        with np.errstate(divide="ignore"):
+            return self.loc + self.scale * (-np.log1p(-q)) ** (1.0 / self.c)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscreteUniform(_TailMethods):
     """Discrete uniform distribution on integers in ``[low, high)``."""
 
     low: int
@@ -577,10 +980,7 @@ class DiscreteUniform:
         x = np.asarray(x)
         with np.errstate(invalid="ignore"):
             valid = (
-                np.isfinite(x)
-                & (x >= self.low)
-                & (x < self.high)
-                & (x == np.floor(x))
+                np.isfinite(x) & (x >= self.low) & (x < self.high) & (x == np.floor(x))
             )
         return np.where(valid, self._mass, 0.0)
 

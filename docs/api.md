@@ -13,6 +13,11 @@ The following names are importable directly from `baldr`:
 - `Beta`
 - `Gamma`
 - `Exponential`
+- `LogNormal`
+- `HalfNormal`
+- `Cauchy`
+- `Laplace`
+- `Weibull`
 - `TruncatedNormal`
 - `TruncatedPowerLaw`
 - `TruncatedSine`
@@ -22,7 +27,14 @@ The following names are importable directly from `baldr`:
 Except for `CallableDistribution`, each constructor accepts
 `backend="scalar"`, `"numpy"`, or `"jax"`. Backend selection occurs during
 construction. Every mathematical distribution implements `pdf`, `logpdf`,
-`cdf`, and `ppf`; discrete uniform also exposes `pmf` and `logpmf`.
+`cdf`, `sf`, `logcdf`, `logsf`, and `ppf`; discrete uniform also exposes `pmf`
+and `logpmf`.
+
+The tail methods are not merely convenience aliases. Where the backend offers
+a complementary special function, Baldr evaluates the upper tail directly.
+For example, Normal `logsf(x)` uses a log-CDF at `-x`, and Beta and Gamma `sf`
+use complementary incomplete functions. This avoids rounding a CDF to one
+before subtracting it.
 
 The lower-case names in `baldr.scalar` are transitional PBjam compatibility
 aliases.
@@ -46,3 +58,12 @@ Private names beginning with `_`, benchmark internals, cached dataclass fields,
 and the exact root-finding or interpolation algorithms are implementation
 details. Baldr validates distribution parameters during construction but does
 not provide SciPy's full runtime validation or distribution catalogue.
+
+## Planned numerical work
+
+The next numerical-development priority is hardening and accelerating the
+custom scalar and JAX Beta and Gamma inverse CDFs. This includes wider shape
+and tail grids, convergence reporting, gradient tests, and comparison of the
+current bisection algorithms with safeguarded Newton updates. The work remains
+separate from this analytic-distribution expansion so solver changes can be
+benchmarked independently.

@@ -98,10 +98,37 @@ def test_vmap_and_gradient_are_supported():
 
 @pytest.mark.parametrize("dtype", [jnp.float32, jnp.float64])
 def test_float_width_is_preserved(dtype):
-    result = jax.jit(baldr_jax.Normal().ppf)(
-        jnp.asarray([0.2, 0.8], dtype=dtype)
-    )
+    result = jax.jit(baldr_jax.Normal().ppf)(jnp.asarray([0.2, 0.8], dtype=dtype))
     assert result.dtype == dtype
+
+
+@pytest.mark.parametrize(
+    ("distribution", "reference"),
+    [
+        (baldr_jax.LogNormal(0.7, -1.0, 2.5), stats.lognorm(0.7, -1.0, 2.5)),
+        (baldr_jax.HalfNormal(-1.0, 2.5), stats.halfnorm(-1.0, 2.5)),
+        (baldr_jax.Cauchy(1.0, 2.5), stats.cauchy(1.0, 2.5)),
+        (baldr_jax.Laplace(1.0, 2.5), stats.laplace(1.0, 2.5)),
+        (baldr_jax.Weibull(1.7, -1.0, 2.5), stats.weibull_min(1.7, -1.0, 2.5)),
+    ],
+)
+def test_additional_jax_distributions_match_scipy_under_jit(distribution, reference):
+    """New JAX distributions agree with SciPy when whole-function compiled."""
+
+    points = jnp.asarray([-5.0, -1.0, 0.0, 2.0, 10.0])
+    probabilities = jnp.asarray([0.01, 0.2, 0.5, 0.8, 0.99])
+    for method in ("logpdf", "pdf", "cdf", "sf", "logcdf", "logsf"):
+        result = jax.jit(getattr(distribution, method))(points)
+        np.testing.assert_allclose(
+            result,
+            getattr(reference, method)(np.asarray(points)),
+            rtol=2e-10,
+            atol=2e-10,
+        )
+    result = jax.jit(distribution.ppf)(probabilities)
+    np.testing.assert_allclose(
+        result, reference.ppf(probabilities), rtol=2e-10, atol=2e-10
+    )
 
 
 def test_discrete_uniform_and_beta_boundaries():

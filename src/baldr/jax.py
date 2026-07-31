@@ -13,18 +13,32 @@ from typing import Any
 
 import jax
 import jax.numpy as jnp
-from jax.scipy.special import betainc, gammainc, ndtr, ndtri, xlog1py, xlogy
+from jax.scipy.special import (
+    betainc,
+    gammainc,
+    gammaincc,
+    log_ndtr,
+    ndtr,
+    ndtri,
+    xlog1py,
+    xlogy,
+)
 
 __all__ = [
     "Beta",
+    "Cauchy",
     "DiscreteUniform",
     "Exponential",
     "Gamma",
+    "HalfNormal",
+    "Laplace",
+    "LogNormal",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
+    "Weibull",
     "beta",
     "gamma",
     "normal",
@@ -34,6 +48,132 @@ __all__ = [
 ]
 
 _LOG_TWO_PI = math.log(2.0 * math.pi)
+
+
+class _TailMethods:
+    """Provide traceable survival and logarithmic cumulative methods."""
+
+    def sf(self, x: Any) -> jax.Array:
+        """Evaluate the survival function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Upper-tail probabilities.
+        """
+
+        survival = getattr(self, "_sf", None)
+        if survival is not None:
+            return survival(x)
+        return jnp.clip(1.0 - self.cdf(x), 0.0, 1.0)
+
+    def logcdf(self, x: Any) -> jax.Array:
+        """Evaluate the logarithm of the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Logarithmic lower-tail probabilities.
+        """
+
+        logarithm = getattr(self, "_logcdf", None)
+        return logarithm(x) if logarithm is not None else jnp.log(self.cdf(x))
+
+    def logsf(self, x: Any) -> jax.Array:
+        """Evaluate the logarithm of the survival function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Logarithmic upper-tail probabilities.
+        """
+
+        logarithm = getattr(self, "_logsf", None)
+        return logarithm(x) if logarithm is not None else jnp.log(self.sf(x))
+
+
+class _AnalyticDistribution(_TailMethods):
+    """Expose the common JAX API for analytic distributions."""
+
+    def logpdf(self, x: Any) -> jax.Array:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Log-density at each point.
+        """
+
+        return self._log_density(x)
+
+    def pdf(self, x: Any) -> jax.Array:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Probability density at each point.
+        """
+
+        return jnp.exp(self._log_density(x))
+
+    def cdf(self, x: Any) -> jax.Array:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+
+        Returns
+        -------
+        jax.Array
+            Lower-tail probabilities.
+        """
+
+        return self._cumulative(x)
+
+    def ppf(self, q: Any) -> jax.Array:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : array-like
+            Cumulative probabilities in ``[0, 1]``.
+
+        Returns
+        -------
+        jax.Array
+            Distribution quantiles.
+        """
+
+        q, valid = _quantile(q)
+        return jnp.where(valid, self._inverse(q), jnp.nan)
 
 
 def _positive(value: float, name: str) -> float:
@@ -122,7 +262,7 @@ def _gamma_ppf(q: Any, a: float) -> jax.Array:
 
 
 @dataclass(frozen=True, slots=True)
-class Normal:
+class Normal(_TailMethods):
     """Normal distribution with JAX-traceable methods."""
 
     loc: float = 0.0
@@ -154,13 +294,20 @@ class Normal:
         return value + self._log_normalization if norm else value
 
     def pdf(self, x: Any, norm: bool = True) -> jax.Array:
-        value = jnp.exp(
-            -0.5 * ((jnp.asarray(x) - self.loc) * self._inverse_scale) ** 2
-        )
+        value = jnp.exp(-0.5 * ((jnp.asarray(x) - self.loc) * self._inverse_scale) ** 2)
         return value * math.exp(self._log_normalization) if norm else value
 
     def cdf(self, x: Any) -> jax.Array:
         return ndtr((jnp.asarray(x) - self.loc) * self._inverse_scale)
+
+    def _sf(self, x: Any) -> jax.Array:
+        return ndtr(-(jnp.asarray(x) - self.loc) * self._inverse_scale)
+
+    def _logcdf(self, x: Any) -> jax.Array:
+        return log_ndtr((jnp.asarray(x) - self.loc) * self._inverse_scale)
+
+    def _logsf(self, x: Any) -> jax.Array:
+        return log_ndtr(-(jnp.asarray(x) - self.loc) * self._inverse_scale)
 
     def ppf(self, q: Any) -> jax.Array:
         q, valid = _quantile(q)
@@ -169,7 +316,7 @@ class Normal:
 
 
 @dataclass(frozen=True, slots=True)
-class Uniform:
+class Uniform(_TailMethods):
     """Continuous uniform distribution on ``[loc, loc + scale]``."""
 
     loc: float = 0.0
@@ -197,9 +344,7 @@ class Uniform:
 
     def pdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
-        return jnp.where(
-            (x >= self.loc) & (x <= self.high), self._density, 0.0
-        )
+        return jnp.where((x >= self.loc) & (x <= self.high), self._density, 0.0)
 
     def logpdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
@@ -210,13 +355,16 @@ class Uniform:
     def cdf(self, x: Any) -> jax.Array:
         return jnp.clip((jnp.asarray(x) - self.loc) / self.scale, 0.0, 1.0)
 
+    def _sf(self, x: Any) -> jax.Array:
+        return jnp.clip((self.high - jnp.asarray(x)) / self.scale, 0.0, 1.0)
+
     def ppf(self, q: Any) -> jax.Array:
         q, valid = _quantile(q)
         return jnp.where(valid, self.loc + q * self.scale, jnp.nan)
 
 
 @dataclass(frozen=True, slots=True)
-class Beta:
+class Beta(_TailMethods):
     """Beta distribution transformed to ``[loc, loc + scale]``."""
 
     a: float = 1.0
@@ -265,6 +413,11 @@ class Beta:
         value = betainc(self.a, self.b, jnp.clip(y, 0.0, 1.0))
         return jnp.where(y <= 0.0, 0.0, jnp.where(y >= 1.0, 1.0, value))
 
+    def _sf(self, x: Any) -> jax.Array:
+        y = (jnp.asarray(x) - self.loc) / self.scale
+        value = betainc(self.b, self.a, jnp.clip(1.0 - y, 0.0, 1.0))
+        return jnp.where(y <= 0.0, 1.0, jnp.where(y >= 1.0, 0.0, value))
+
     def ppf(self, q: Any) -> jax.Array:
         q, valid = _quantile(q)
         value = self.loc + self.scale * _beta_ppf(q, self.a, self.b)
@@ -272,7 +425,7 @@ class Beta:
 
 
 @dataclass(frozen=True, slots=True)
-class Exponential:
+class Exponential(_TailMethods):
     """Exponential distribution using the SciPy ``scale`` convention."""
 
     scale: float = 1.0
@@ -295,9 +448,7 @@ class Exponential:
 
     def logpdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
-        return jnp.where(
-            x >= 0.0, -x * self._inverse_scale - self._log_scale, -jnp.inf
-        )
+        return jnp.where(x >= 0.0, -x * self._inverse_scale - self._log_scale, -jnp.inf)
 
     def pdf(self, x: Any) -> jax.Array:
         return jnp.exp(self.logpdf(x))
@@ -306,13 +457,21 @@ class Exponential:
         x = jnp.asarray(x)
         return jnp.where(x > 0.0, -jnp.expm1(-x * self._inverse_scale), 0.0)
 
+    def _sf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x >= 0.0, jnp.exp(-x * self._inverse_scale), 1.0)
+
+    def _logsf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x >= 0.0, -x * self._inverse_scale, 0.0)
+
     def ppf(self, q: Any) -> jax.Array:
         q, valid = _quantile(q)
         return jnp.where(valid, -self.scale * jnp.log1p(-q), jnp.nan)
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedNormal:
+class TruncatedNormal(_TailMethods):
     """Normal distribution restricted to ``[low, high]``."""
 
     loc: float
@@ -366,7 +525,7 @@ class TruncatedNormal:
 
     def cdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
-        value = (ndtr((x - self.loc) / self.scale) - self._cdf_low)
+        value = ndtr((x - self.loc) / self.scale) - self._cdf_low
         return jnp.clip(value / self._cdf_width, 0.0, 1.0)
 
     def ppf(self, q: Any) -> jax.Array:
@@ -379,7 +538,7 @@ class TruncatedNormal:
 
 
 @dataclass(frozen=True, slots=True)
-class Gamma:
+class Gamma(_TailMethods):
     """Gamma distribution with JAX-traceable methods.
 
     Parameters
@@ -481,6 +640,10 @@ class Gamma:
         y = (jnp.asarray(x) - self.loc) * self._inverse_scale
         return jnp.where(y > 0.0, gammainc(self.a, y), 0.0)
 
+    def _sf(self, x: Any) -> jax.Array:
+        y = (jnp.asarray(x) - self.loc) * self._inverse_scale
+        return jnp.where(y > 0.0, gammaincc(self.a, y), 1.0)
+
     def ppf(self, q: Any) -> jax.Array:
         """Evaluate the quantile function.
 
@@ -501,7 +664,7 @@ class Gamma:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedPowerLaw:
+class TruncatedPowerLaw(_TailMethods):
     """Density proportional to ``x**(-alpha)`` on ``[low, high]``."""
 
     alpha: float
@@ -541,9 +704,7 @@ class TruncatedPowerLaw:
     def logpdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
         value = self._log_normalization - self.alpha * jnp.log(x)
-        return jnp.where(
-            (x >= self.low) & (x <= self.high), value, -jnp.inf
-        )
+        return jnp.where((x >= self.low) & (x <= self.high), value, -jnp.inf)
 
     def pdf(self, x: Any) -> jax.Array:
         return jnp.exp(self.logpdf(x))
@@ -554,23 +715,19 @@ class TruncatedPowerLaw:
             value = (jnp.log(x) - self._lower_term) / self._width_term
         else:
             value = (x**self._power - self._lower_term) / self._width_term
-        return jnp.where(
-            x <= self.low, 0.0, jnp.where(x >= self.high, 1.0, value)
-        )
+        return jnp.where(x <= self.low, 0.0, jnp.where(x >= self.high, 1.0, value))
 
     def ppf(self, q: Any) -> jax.Array:
         q, valid = _quantile(q)
         if self._log_uniform:
             value = jnp.exp(self._lower_term + q * self._width_term)
         else:
-            value = (self._lower_term + q * self._width_term) ** (
-                1.0 / self._power
-            )
+            value = (self._lower_term + q * self._width_term) ** (1.0 / self._power)
         return jnp.where(valid, value, jnp.nan)
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedSine:
+class TruncatedSine(_TailMethods):
     """Sine density on the interval ``[0, pi / 2]``."""
 
     @property
@@ -583,16 +740,12 @@ class TruncatedSine:
 
     def pdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
-        return jnp.where(
-            (x >= 0.0) & (x <= math.pi / 2.0), jnp.sin(x), 0.0
-        )
+        return jnp.where((x >= 0.0) & (x <= math.pi / 2.0), jnp.sin(x), 0.0)
 
     def logpdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
         value = jnp.log(jnp.sin(x))
-        return jnp.where(
-            (x > 0.0) & (x <= math.pi / 2.0), value, -jnp.inf
-        )
+        return jnp.where((x > 0.0) & (x <= math.pi / 2.0), value, -jnp.inf)
 
     def cdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
@@ -608,7 +761,239 @@ class TruncatedSine:
 
 
 @dataclass(frozen=True, slots=True)
-class DiscreteUniform:
+class LogNormal(_AnalyticDistribution):
+    """Log-normal distribution using SciPy's shape, location, and scale."""
+
+    s: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "s", _positive(self.s, "s"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.exp(0.5 * self.s**2)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale
+
+    def _z(self, x: Any) -> jax.Array:
+        return jnp.log((jnp.asarray(x) - self.loc) / self.scale) / self.s
+
+    def _log_density(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        z = self._z(x)
+        value = -0.5 * z * z - jnp.log(x - self.loc)
+        value -= math.log(self.s) + 0.5 * _LOG_TWO_PI
+        return jnp.where(x > self.loc, value, -jnp.inf)
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x > self.loc, ndtr(self._z(x)), 0.0)
+
+    def _sf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x > self.loc, ndtr(-self._z(x)), 1.0)
+
+    def _logcdf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x > self.loc, log_ndtr(self._z(x)), -jnp.inf)
+
+    def _logsf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        return jnp.where(x > self.loc, log_ndtr(-self._z(x)), 0.0)
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        return self.loc + self.scale * jnp.exp(self.s * ndtri(q))
+
+
+@dataclass(frozen=True, slots=True)
+class HalfNormal(_AnalyticDistribution):
+    """Half-normal distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.sqrt(2.0 / math.pi)
+
+    @property
+    def median(self) -> jax.Array:
+        return self.ppf(0.5)
+
+    def _log_density(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        z = (x - self.loc) / self.scale
+        value = -0.5 * z * z + 0.5 * math.log(2.0 / math.pi)
+        return jnp.where(x >= self.loc, value - math.log(self.scale), -jnp.inf)
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        z = (x - self.loc) / self.scale
+        return jnp.where(x > self.loc, 2.0 * ndtr(z) - 1.0, 0.0)
+
+    def _sf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        z = (x - self.loc) / self.scale
+        return jnp.where(x > self.loc, 2.0 * ndtr(-z), 1.0)
+
+    def _logsf(self, x: Any) -> jax.Array:
+        x = jnp.asarray(x)
+        z = (x - self.loc) / self.scale
+        return jnp.where(x > self.loc, math.log(2.0) + log_ndtr(-z), 0.0)
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        return self.loc + self.scale * ndtri(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class Cauchy(_AnalyticDistribution):
+    """Cauchy distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return math.nan
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return -math.log(math.pi * self.scale) - jnp.log1p(z * z)
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return 0.5 + jnp.arctan(z) / math.pi
+
+    def _sf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(
+            z > 0.0,
+            jnp.arctan(1.0 / z) / math.pi,
+            0.5 - jnp.arctan(z) / math.pi,
+        )
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        value = self.loc + self.scale * jnp.tan(math.pi * (q - 0.5))
+        value = jnp.where(q == 0.0, -jnp.inf, value)
+        return jnp.where(q == 1.0, jnp.inf, value)
+
+
+@dataclass(frozen=True, slots=True)
+class Laplace(_AnalyticDistribution):
+    """Laplace distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: Any) -> jax.Array:
+        return -jnp.abs(jnp.asarray(x) - self.loc) / self.scale - math.log(
+            2.0 * self.scale
+        )
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z <= 0.0, 0.5 * jnp.exp(z), 1.0 - 0.5 * jnp.exp(-z))
+
+    def _sf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z <= 0.0, 1.0 - 0.5 * jnp.exp(z), 0.5 * jnp.exp(-z))
+
+    def _logcdf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z <= 0.0, math.log(0.5) + z, jnp.log1p(-0.5 * jnp.exp(-z)))
+
+    def _logsf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z <= 0.0, jnp.log1p(-0.5 * jnp.exp(z)), math.log(0.5) - z)
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        return jnp.where(
+            q < 0.5,
+            self.loc + self.scale * jnp.log(2.0 * q),
+            self.loc - self.scale * jnp.log(2.0 * (1.0 - q)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Weibull(_AnalyticDistribution):
+    """Minimum Weibull distribution using SciPy's shape, location, and scale."""
+
+    c: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "c", _positive(self.c, "c"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.gamma(1.0 + 1.0 / self.c)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale * math.log(2.0) ** (1.0 / self.c)
+
+    def _log_density(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        value = math.log(self.c / self.scale)
+        value += (self.c - 1.0) * jnp.log(z) - z**self.c
+        boundary = (
+            -jnp.inf
+            if self.c > 1.0
+            else (jnp.inf if self.c < 1.0 else -math.log(self.scale))
+        )
+        return jnp.where(z < 0.0, -jnp.inf, jnp.where(z == 0.0, boundary, value))
+
+    def _cumulative(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z > 0.0, -jnp.expm1(-(z**self.c)), 0.0)
+
+    def _sf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z > 0.0, jnp.exp(-(z**self.c)), 1.0)
+
+    def _logsf(self, x: Any) -> jax.Array:
+        z = (jnp.asarray(x) - self.loc) / self.scale
+        return jnp.where(z > 0.0, -(z**self.c), 0.0)
+
+    def _inverse(self, q: jax.Array) -> jax.Array:
+        return self.loc + self.scale * (-jnp.log1p(-q)) ** (1.0 / self.c)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscreteUniform(_TailMethods):
     """Discrete uniform distribution on integers in ``[low, high)``."""
 
     low: int
@@ -640,10 +1025,7 @@ class DiscreteUniform:
     def pdf(self, x: Any) -> jax.Array:
         x = jnp.asarray(x)
         valid = (
-            jnp.isfinite(x)
-            & (x >= self.low)
-            & (x < self.high)
-            & (x == jnp.floor(x))
+            jnp.isfinite(x) & (x >= self.low) & (x < self.high) & (x == jnp.floor(x))
         )
         return jnp.where(valid, self._mass, 0.0)
 

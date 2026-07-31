@@ -3,17 +3,23 @@
 import math
 
 import pytest
+from scipy import stats
 
 from baldr.scalar import (
     Beta,
+    Cauchy,
     DiscreteUniform,
     Exponential,
     Gamma,
+    HalfNormal,
+    Laplace,
+    LogNormal,
     Normal,
     TruncatedNormal,
     TruncatedPowerLaw,
     TruncatedSine,
     Uniform,
+    Weibull,
     beta,
     gamma,
     normal,
@@ -21,6 +27,64 @@ from baldr.scalar import (
     truncsine,
     uniform,
 )
+
+
+@pytest.mark.parametrize(
+    ("distribution", "reference"),
+    [
+        (LogNormal(0.7, -1.0, 2.5), -1.0),
+        (HalfNormal(-1.0, 2.5), -1.0),
+        (Cauchy(1.0, 2.5), -math.inf),
+        (Laplace(1.0, 2.5), -math.inf),
+        (Weibull(1.7, -1.0, 2.5), -1.0),
+    ],
+)
+def test_additional_scalar_distributions_round_trip(distribution, reference):
+    """New scalar distributions invert their CDFs and preserve endpoints."""
+
+    assert distribution.ppf(0.0) == reference
+    for probability in (1e-6, 0.1, 0.5, 0.9, 1.0 - 1e-6):
+        assert distribution.cdf(distribution.ppf(probability)) == pytest.approx(
+            probability, rel=2e-9, abs=2e-11
+        )
+
+
+def test_scalar_normal_logsf_is_stable_in_extreme_tail():
+    """Scalar Normal log-survival avoids CDF subtraction and underflow."""
+
+    distribution = Normal()
+    assert distribution.cdf(40.0) == 1.0
+    assert distribution.logsf(40.0) == pytest.approx(-804.6084420137539, rel=1e-8)
+
+    gamma_distribution = Gamma(a=2.5)
+    assert gamma_distribution.cdf(100.0) == 1.0
+    assert gamma_distribution.logsf(100.0) == pytest.approx(
+        stats.gamma(2.5).logsf(100.0), rel=2e-12
+    )
+
+
+@pytest.mark.parametrize(
+    ("distribution", "reference", "points"),
+    [
+        (LogNormal(0.7, -1.0, 2.5), stats.lognorm(0.7, -1.0, 2.5), (-1.0, 0.0, 5.0)),
+        (HalfNormal(-1.0, 2.5), stats.halfnorm(-1.0, 2.5), (-2.0, -1.0, 5.0)),
+        (Cauchy(1.0, 2.5), stats.cauchy(1.0, 2.5), (-20.0, 1.0, 20.0)),
+        (Laplace(1.0, 2.5), stats.laplace(1.0, 2.5), (-20.0, 1.0, 20.0)),
+        (
+            Weibull(1.7, -1.0, 2.5),
+            stats.weibull_min(1.7, -1.0, 2.5),
+            (-2.0, -1.0, 5.0),
+        ),
+    ],
+)
+def test_additional_scalar_distributions_match_scipy(distribution, reference, points):
+    """Scalar density and tail methods agree with SciPy."""
+
+    for point in points:
+        for method in ("logpdf", "pdf", "cdf", "sf", "logcdf", "logsf"):
+            assert getattr(distribution, method)(point) == pytest.approx(
+                getattr(reference, method)(point), rel=2e-10, abs=2e-12
+            )
 
 
 @pytest.mark.parametrize(
@@ -103,9 +167,7 @@ def test_truncated_normal_is_renormalized() -> None:
     distribution = TruncatedNormal(loc=0.0, scale=1.0, low=-1.0, high=1.0)
     untruncated_at_zero = 1.0 / math.sqrt(2.0 * math.pi)
     retained_mass = Normal().cdf(1.0) - Normal().cdf(-1.0)
-    assert distribution.pdf(0.0) == pytest.approx(
-        untruncated_at_zero / retained_mass
-    )
+    assert distribution.pdf(0.0) == pytest.approx(untruncated_at_zero / retained_mass)
 
 
 def test_discrete_uniform_corrects_pbjam_logpdf_bug() -> None:

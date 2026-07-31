@@ -63,8 +63,12 @@ Backend selection happens once during construction, so repeated evaluations do
 not pay for a backend branch. Baldr does not JIT individual methods: compile
 the complete prior transform or likelihood to let JAX fuse operations.
 
-Baldr provides Normal, Uniform, Beta, Gamma, Exponential, truncated Normal,
-truncated power-law, truncated sine, and discrete uniform distributions.
+Baldr provides Normal, Uniform, Beta, Gamma, Exponential, log-normal,
+half-normal, Cauchy, Laplace, Weibull, truncated Normal, truncated power-law,
+truncated sine, and discrete uniform distributions. Distributions expose
+`sf`, `logcdf`, and `logsf` in addition to `pdf`, `logpdf`, `cdf`, and `ppf`;
+the direct tail methods avoid precision loss from expressions such as
+`1 - cdf(x)`.
 `CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`, and `ppf`
 functions without imposing a backend or performing construction-time numerical
 integration.
