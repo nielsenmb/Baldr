@@ -11,14 +11,19 @@ Backend = Literal["scalar", "numpy", "jax"]
 __all__ = [
     "Backend",
     "Beta",
+    "Cauchy",
     "DiscreteUniform",
     "Exponential",
     "Gamma",
+    "HalfNormal",
+    "Laplace",
+    "LogNormal",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
+    "Weibull",
 ]
 
 
@@ -49,9 +54,7 @@ def _module(backend: Backend) -> Any:
     raise ValueError("backend must be 'scalar', 'numpy', or 'jax'")
 
 
-def Normal(
-    loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar"
-) -> Any:
+def Normal(loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar") -> Any:
     """Construct a Normal distribution for the selected backend.
 
     Parameters
@@ -173,6 +176,131 @@ def Gamma(
     return _module(backend).Gamma(a=a, loc=loc, scale=scale)
 
 
+def LogNormal(
+    s: float = 1.0,
+    loc: float = 0.0,
+    scale: float = 1.0,
+    *,
+    backend: Backend = "scalar",
+) -> Any:
+    """Construct a log-normal distribution for the selected backend.
+
+    Parameters
+    ----------
+    s : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive multiplicative scale.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Log-normal distribution implemented by the selected backend.
+    """
+
+    return _module(backend).LogNormal(s=s, loc=loc, scale=scale)
+
+
+def HalfNormal(
+    loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar"
+) -> Any:
+    """Construct a half-normal distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Half-normal distribution implemented by the selected backend.
+    """
+
+    return _module(backend).HalfNormal(loc=loc, scale=scale)
+
+
+def Cauchy(loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar") -> Any:
+    """Construct a Cauchy distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float, default=0.0
+        Distribution median and location.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Cauchy distribution implemented by the selected backend.
+    """
+
+    return _module(backend).Cauchy(loc=loc, scale=scale)
+
+
+def Laplace(
+    loc: float = 0.0, scale: float = 1.0, *, backend: Backend = "scalar"
+) -> Any:
+    """Construct a Laplace distribution for the selected backend.
+
+    Parameters
+    ----------
+    loc : float, default=0.0
+        Distribution mean and median.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Laplace distribution implemented by the selected backend.
+    """
+
+    return _module(backend).Laplace(loc=loc, scale=scale)
+
+
+def Weibull(
+    c: float = 1.0,
+    loc: float = 0.0,
+    scale: float = 1.0,
+    *,
+    backend: Backend = "scalar",
+) -> Any:
+    """Construct a minimum Weibull distribution for the selected backend.
+
+    Parameters
+    ----------
+    c : float, default=1.0
+        Positive shape parameter.
+    loc : float, default=0.0
+        Lower support boundary.
+    scale : float, default=1.0
+        Positive scale parameter.
+    backend : {"scalar", "numpy", "jax"}, default="scalar"
+        Execution backend selected once during construction.
+
+    Returns
+    -------
+    object
+        Weibull distribution implemented by the selected backend.
+    """
+
+    return _module(backend).Weibull(c=c, loc=loc, scale=scale)
+
+
 def TruncatedNormal(
     loc: float,
     scale: float,
@@ -200,9 +328,7 @@ def TruncatedNormal(
         Truncated Normal distribution implemented by the selected backend.
     """
 
-    return _module(backend).TruncatedNormal(
-        loc=loc, scale=scale, low=low, high=high
-    )
+    return _module(backend).TruncatedNormal(loc=loc, scale=scale, low=low, high=high)
 
 
 def TruncatedPowerLaw(
@@ -249,9 +375,7 @@ def TruncatedSine(*, backend: Backend = "scalar") -> Any:
     return _module(backend).TruncatedSine()
 
 
-def DiscreteUniform(
-    low: int, high: int, *, backend: Backend = "scalar"
-) -> Any:
+def DiscreteUniform(low: int, high: int, *, backend: Backend = "scalar") -> Any:
     """Construct a discrete uniform distribution for the selected backend.
 
     Parameters

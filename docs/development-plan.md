@@ -71,3 +71,14 @@ Empirical KDEs are fitted once into normalized interpolation grids. NumPy and
 JAX evaluators reuse those grids, so changing the evaluation backend does not
 repeat the fit. API and empirical-prior guides, a worked notebook, release
 notes, and `0.1.0rc1` metadata complete the first planned development sequence.
+
+## Post-release-candidate priorities
+
+The first extension adds analytic LogNormal, HalfNormal, Cauchy, Laplace, and
+Weibull distributions, followed by stable survival and logarithmic-tail
+methods across the common API.
+
+Beta and Gamma inverse-CDF hardening remains the next numerical priority. It
+will be developed as a dedicated benchmark-led change covering extreme shape
+parameters and probabilities, float32 and float64 behaviour, convergence
+reporting, and JAX gradients.

@@ -13,14 +13,19 @@ from statistics import NormalDist
 
 __all__ = [
     "Beta",
+    "Cauchy",
     "Gamma",
     "DiscreteUniform",
     "Exponential",
+    "HalfNormal",
+    "Laplace",
+    "LogNormal",
     "Normal",
     "TruncatedNormal",
     "TruncatedPowerLaw",
     "TruncatedSine",
     "Uniform",
+    "Weibull",
     "beta",
     "gamma",
     "normal",
@@ -31,6 +36,150 @@ __all__ = [
 
 _LOG_TWO_PI = math.log(2.0 * math.pi)
 _STANDARD_NORMAL = NormalDist()
+
+
+class _TailMethods:
+    """Provide survival and logarithmic cumulative methods."""
+
+    def sf(self, x: float) -> float:
+        """Evaluate the survival function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Upper-tail probability at ``x``.
+        """
+
+        survival = getattr(self, "_sf", None)
+        if survival is not None:
+            return survival(x)
+        return max(0.0, 1.0 - self.cdf(x))
+
+    def logcdf(self, x: float) -> float:
+        """Evaluate the logarithm of the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Logarithmic lower-tail probability at ``x``.
+        """
+
+        logarithm = getattr(self, "_logcdf", None)
+        value = logarithm(x) if logarithm is not None else self.cdf(x)
+        return value if logarithm is not None else _log_probability(value)
+
+    def logsf(self, x: float) -> float:
+        """Evaluate the logarithm of the survival function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Logarithmic upper-tail probability at ``x``.
+        """
+
+        logarithm = getattr(self, "_logsf", None)
+        value = logarithm(x) if logarithm is not None else self.sf(x)
+        return value if logarithm is not None else _log_probability(value)
+
+
+class _AnalyticDistribution(_TailMethods):
+    """Expose the common scalar API for analytic distributions."""
+
+    def logpdf(self, x: float) -> float:
+        """Evaluate the log-probability density.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Log-density at ``x``.
+        """
+
+        return self._log_density(x)
+
+    def pdf(self, x: float) -> float:
+        """Evaluate the probability density.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Probability density at ``x``.
+        """
+
+        return math.exp(self._log_density(x))
+
+    def cdf(self, x: float) -> float:
+        """Evaluate the cumulative distribution function.
+
+        Parameters
+        ----------
+        x : float
+            Evaluation point.
+
+        Returns
+        -------
+        float
+            Lower-tail probability at ``x``.
+        """
+
+        return self._cumulative(x)
+
+    def ppf(self, q: float) -> float:
+        """Evaluate the quantile function.
+
+        Parameters
+        ----------
+        q : float
+            Cumulative probability in ``[0, 1]``.
+
+        Returns
+        -------
+        float
+            Distribution quantile.
+        """
+
+        return self._quantile(q)
+
+
+def _log_probability(value: float) -> float:
+    """Return a boundary-safe logarithm of a probability."""
+
+    return math.log(value) if value > 0.0 else -math.inf
+
+
+def _standard_normal_logcdf(x: float) -> float:
+    """Evaluate the standard Normal log-CDF without lower-tail underflow."""
+
+    if x > -10.0:
+        return math.log(0.5 * math.erfc(-x / math.sqrt(2.0)))
+    inverse_square = 1.0 / (x * x)
+    correction = 1.0 - inverse_square + 3.0 * inverse_square**2
+    correction -= 15.0 * inverse_square**3
+    return -0.5 * x * x - math.log(-x) - 0.5 * _LOG_TWO_PI + math.log(correction)
 
 
 def _positive(value: float, name: str) -> float:
@@ -58,7 +207,7 @@ def _quantile_endpoint(q: float, low: float, high: float) -> float | None:
 
 
 @dataclass(frozen=True, slots=True)
-class Normal:
+class Normal(_TailMethods):
     """Normal distribution with scalar evaluation methods."""
 
     loc: float = 0.0
@@ -96,6 +245,16 @@ class Normal:
     def cdf(self, x: float) -> float:
         return _STANDARD_NORMAL.cdf((x - self.loc) * self._inverse_scale)
 
+    def _sf(self, x: float) -> float:
+        z = (x - self.loc) * self._inverse_scale
+        return _STANDARD_NORMAL.cdf(-z)
+
+    def _logcdf(self, x: float) -> float:
+        return _standard_normal_logcdf((x - self.loc) * self._inverse_scale)
+
+    def _logsf(self, x: float) -> float:
+        return _standard_normal_logcdf(-(x - self.loc) * self._inverse_scale)
+
     def ppf(self, q: float) -> float:
         endpoint = _quantile_endpoint(q, -math.inf, math.inf)
         if endpoint is not None:
@@ -104,7 +263,7 @@ class Normal:
 
 
 @dataclass(frozen=True, slots=True)
-class Uniform:
+class Uniform(_TailMethods):
     """Continuous uniform distribution on ``[loc, loc + scale]``."""
 
     loc: float = 0.0
@@ -142,6 +301,13 @@ class Uniform:
         if x >= self.high:
             return 1.0
         return (x - self.loc) / self.scale
+
+    def _sf(self, x: float) -> float:
+        if x <= self.loc:
+            return 1.0
+        if x >= self.high:
+            return 0.0
+        return (self.high - x) / self.scale
 
     def ppf(self, q: float) -> float:
         endpoint = _quantile_endpoint(q, self.loc, self.high)
@@ -257,6 +423,52 @@ def _regularized_gamma(a: float, x: float) -> float:
     return 1.0 - math.exp(log_front) * result
 
 
+def _regularized_gamma_upper(a: float, x: float) -> float:
+    """Evaluate the regularized upper incomplete gamma function.
+
+    Parameters
+    ----------
+    a : float
+        Positive shape parameter.
+    x : float
+        Non-negative evaluation point.
+
+    Returns
+    -------
+    float
+        Value of the regularized upper incomplete gamma function.
+    """
+
+    if x <= 0.0:
+        return 1.0
+    if x < a + 1.0:
+        return 1.0 - _regularized_gamma(a, x)
+
+    log_front = a * math.log(x) - x - math.lgamma(a)
+    tiny = 1e-300
+    denominator = x + 1.0 - a
+    c = 1.0 / tiny
+    d = 1.0 / max(abs(denominator), tiny)
+    if denominator < 0.0:
+        d = -d
+    result = d
+    for iteration in range(1, 201):
+        coefficient = -iteration * (iteration - a)
+        denominator += 2.0
+        d = coefficient * d + denominator
+        if abs(d) < tiny:
+            d = tiny
+        c = denominator + coefficient / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        result *= delta
+        if abs(delta - 1.0) <= 3e-14:
+            break
+    return math.exp(log_front) * result
+
+
 def _log_power_at_boundary(exponent: float) -> float:
     if exponent > 0.0:
         return -math.inf
@@ -266,7 +478,7 @@ def _log_power_at_boundary(exponent: float) -> float:
 
 
 @dataclass(frozen=True, slots=True)
-class Beta:
+class Beta(_TailMethods):
     """Beta distribution transformed to ``[loc, loc + scale]``."""
 
     a: float = 1.0
@@ -323,6 +535,10 @@ class Beta:
         y = (x - self.loc) / self.scale
         return _regularized_beta(y, self.a, self.b, self._log_beta)
 
+    def _sf(self, x: float) -> float:
+        y = (x - self.loc) / self.scale
+        return _regularized_beta(1.0 - y, self.b, self.a, self._log_beta)
+
     def ppf(self, q: float) -> float:
         endpoint = _quantile_endpoint(q, self.loc, self.high)
         if endpoint is not None:
@@ -356,7 +572,7 @@ class Beta:
 
 
 @dataclass(frozen=True, slots=True)
-class Exponential:
+class Exponential(_TailMethods):
     """Exponential distribution using the SciPy ``scale`` convention."""
 
     scale: float = 1.0
@@ -386,6 +602,12 @@ class Exponential:
     def cdf(self, x: float) -> float:
         return -math.expm1(-x * self._inverse_scale) if x > 0.0 else 0.0
 
+    def _sf(self, x: float) -> float:
+        return math.exp(-x * self._inverse_scale) if x >= 0.0 else 1.0
+
+    def _logsf(self, x: float) -> float:
+        return -x * self._inverse_scale if x >= 0.0 else 0.0
+
     def ppf(self, q: float) -> float:
         endpoint = _quantile_endpoint(q, 0.0, math.inf)
         if endpoint is not None:
@@ -394,7 +616,7 @@ class Exponential:
 
 
 @dataclass(frozen=True, slots=True)
-class Gamma:
+class Gamma(_TailMethods):
     """Gamma distribution using SciPy's shape, location, and scale convention.
 
     Parameters
@@ -458,8 +680,10 @@ class Gamma:
         y = (x - self.loc) * self._inverse_scale
         if y < 0.0:
             return -math.inf
-        power = _log_power_at_boundary(self.a - 1.0) if y == 0.0 else (
-            (self.a - 1.0) * math.log(y)
+        power = (
+            _log_power_at_boundary(self.a - 1.0)
+            if y == 0.0
+            else ((self.a - 1.0) * math.log(y))
         )
         value = power - y
         return value + self._log_normalization if norm else value
@@ -496,9 +720,11 @@ class Gamma:
             Cumulative probability at ``x``.
         """
 
-        return _regularized_gamma(
-            self.a, (x - self.loc) * self._inverse_scale
-        )
+        return _regularized_gamma(self.a, (x - self.loc) * self._inverse_scale)
+
+    def _sf(self, x: float) -> float:
+        y = (x - self.loc) * self._inverse_scale
+        return _regularized_gamma_upper(self.a, y)
 
     def ppf(self, q: float) -> float:
         """Evaluate the quantile function.
@@ -532,7 +758,7 @@ class Gamma:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedNormal:
+class TruncatedNormal(_TailMethods):
     """Normal distribution restricted to ``[low, high]``."""
 
     loc: float
@@ -594,7 +820,7 @@ class TruncatedNormal:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedPowerLaw:
+class TruncatedPowerLaw(_TailMethods):
     """Density proportional to ``x**(-alpha)`` on ``[low, high]``."""
 
     alpha: float
@@ -658,7 +884,7 @@ class TruncatedPowerLaw:
 
 
 @dataclass(frozen=True, slots=True)
-class TruncatedSine:
+class TruncatedSine(_TailMethods):
     """Sine density on the interval ``[0, pi / 2]``."""
 
     @property
@@ -692,7 +918,242 @@ class TruncatedSine:
 
 
 @dataclass(frozen=True, slots=True)
-class DiscreteUniform:
+class LogNormal(_AnalyticDistribution):
+    """Log-normal distribution using SciPy's shape, location, and scale."""
+
+    s: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "s", _positive(self.s, "s"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.exp(0.5 * self.s**2)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale
+
+    def _z(self, x: float) -> float:
+        return math.log((x - self.loc) / self.scale) / self.s
+
+    def _log_density(self, x: float) -> float:
+        if x <= self.loc:
+            return -math.inf
+        z = self._z(x)
+        return (
+            -0.5 * z * z - math.log(x - self.loc) - math.log(self.s) - 0.5 * _LOG_TWO_PI
+        )
+
+    def _cumulative(self, x: float) -> float:
+        return 0.0 if x <= self.loc else _STANDARD_NORMAL.cdf(self._z(x))
+
+    def _sf(self, x: float) -> float:
+        return 1.0 if x <= self.loc else _STANDARD_NORMAL.cdf(-self._z(x))
+
+    def _logcdf(self, x: float) -> float:
+        return -math.inf if x <= self.loc else _standard_normal_logcdf(self._z(x))
+
+    def _logsf(self, x: float) -> float:
+        return 0.0 if x <= self.loc else _standard_normal_logcdf(-self._z(x))
+
+    def _quantile(self, q: float) -> float:
+        endpoint = _quantile_endpoint(q, self.loc, math.inf)
+        if endpoint is not None:
+            return endpoint
+        return self.loc + self.scale * math.exp(self.s * _STANDARD_NORMAL.inv_cdf(q))
+
+
+@dataclass(frozen=True, slots=True)
+class HalfNormal(_AnalyticDistribution):
+    """Half-normal distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.sqrt(2.0 / math.pi)
+
+    @property
+    def median(self) -> float:
+        return self._quantile(0.5)
+
+    def _log_density(self, x: float) -> float:
+        if x < self.loc:
+            return -math.inf
+        z = (x - self.loc) / self.scale
+        return -0.5 * z * z + 0.5 * math.log(2.0 / math.pi) - math.log(self.scale)
+
+    def _cumulative(self, x: float) -> float:
+        if x <= self.loc:
+            return 0.0
+        return math.erf((x - self.loc) / (self.scale * math.sqrt(2.0)))
+
+    def _sf(self, x: float) -> float:
+        if x <= self.loc:
+            return 1.0
+        z = (x - self.loc) / self.scale
+        return 2.0 * _STANDARD_NORMAL.cdf(-z)
+
+    def _logsf(self, x: float) -> float:
+        if x <= self.loc:
+            return 0.0
+        z = (x - self.loc) / self.scale
+        return math.log(2.0) + _standard_normal_logcdf(-z)
+
+    def _quantile(self, q: float) -> float:
+        endpoint = _quantile_endpoint(q, self.loc, math.inf)
+        if endpoint is not None:
+            return endpoint
+        return self.loc + self.scale * _STANDARD_NORMAL.inv_cdf(0.5 * (q + 1.0))
+
+
+@dataclass(frozen=True, slots=True)
+class Cauchy(_AnalyticDistribution):
+    """Cauchy distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return math.nan
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return -math.log(math.pi * self.scale) - math.log1p(z * z)
+
+    def _cumulative(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 0.5 + math.atan(z) / math.pi
+
+    def _sf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        if z > 0.0:
+            return math.atan(1.0 / z) / math.pi
+        return 0.5 - math.atan(z) / math.pi
+
+    def _quantile(self, q: float) -> float:
+        endpoint = _quantile_endpoint(q, -math.inf, math.inf)
+        if endpoint is not None:
+            return endpoint
+        return self.loc + self.scale * math.tan(math.pi * (q - 0.5))
+
+
+@dataclass(frozen=True, slots=True)
+class Laplace(_AnalyticDistribution):
+    """Laplace distribution using SciPy's location and scale convention."""
+
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc
+
+    @property
+    def median(self) -> float:
+        return self.loc
+
+    def _log_density(self, x: float) -> float:
+        return -abs(x - self.loc) / self.scale - math.log(2.0 * self.scale)
+
+    def _cumulative(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 0.5 * math.exp(z) if z <= 0.0 else 1.0 - 0.5 * math.exp(-z)
+
+    def _sf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 1.0 - 0.5 * math.exp(z) if z <= 0.0 else 0.5 * math.exp(-z)
+
+    def _logcdf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return math.log(0.5) + z if z <= 0.0 else math.log1p(-0.5 * math.exp(-z))
+
+    def _logsf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return math.log1p(-0.5 * math.exp(z)) if z <= 0.0 else math.log(0.5) - z
+
+    def _quantile(self, q: float) -> float:
+        endpoint = _quantile_endpoint(q, -math.inf, math.inf)
+        if endpoint is not None:
+            return endpoint
+        if q < 0.5:
+            return self.loc + self.scale * math.log(2.0 * q)
+        return self.loc - self.scale * math.log(2.0 * (1.0 - q))
+
+
+@dataclass(frozen=True, slots=True)
+class Weibull(_AnalyticDistribution):
+    """Minimum Weibull distribution using SciPy's shape, location, and scale."""
+
+    c: float = 1.0
+    loc: float = 0.0
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "c", _positive(self.c, "c"))
+        object.__setattr__(self, "loc", _finite(self.loc, "loc"))
+        object.__setattr__(self, "scale", _positive(self.scale, "scale"))
+
+    @property
+    def mean(self) -> float:
+        return self.loc + self.scale * math.gamma(1.0 + 1.0 / self.c)
+
+    @property
+    def median(self) -> float:
+        return self.loc + self.scale * math.log(2.0) ** (1.0 / self.c)
+
+    def _log_density(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        if z < 0.0:
+            return -math.inf
+        if z == 0.0:
+            return _log_power_at_boundary(self.c - 1.0)
+        return math.log(self.c / self.scale) + (self.c - 1.0) * math.log(z) - z**self.c
+
+    def _cumulative(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 0.0 if z <= 0.0 else -math.expm1(-(z**self.c))
+
+    def _sf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 1.0 if z <= 0.0 else math.exp(-(z**self.c))
+
+    def _logsf(self, x: float) -> float:
+        z = (x - self.loc) / self.scale
+        return 0.0 if z <= 0.0 else -(z**self.c)
+
+    def _quantile(self, q: float) -> float:
+        endpoint = _quantile_endpoint(q, self.loc, math.inf)
+        if endpoint is not None:
+            return endpoint
+        return self.loc + self.scale * (-math.log1p(-q)) ** (1.0 / self.c)
+
+
+@dataclass(frozen=True, slots=True)
+class DiscreteUniform(_TailMethods):
     """Discrete uniform distribution on integers in ``[low, high)``."""
 
     low: int
