@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.0 - 2026-08-08
+
+- Support broadcastable array-valued Gamma shape and scale parameters in the
+  NumPy backend, including density, cumulative, tail, and quantile methods.
+- Add a validation-free, mean-parameterized Gamma log-density kernel for fused
+  periodogram likelihoods such as Skuld's.
+
 - Add Student's t distribution to the scalar, NumPy, and JAX backends, with
   stable symmetric tails and inverse CDFs built on the hardened Beta solver.
 - Replace fixed-loop JAX Beta and Gamma inverse-CDF bisection with safeguarded

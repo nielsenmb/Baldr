@@ -1,8 +1,7 @@
 # Supported API
 
-Baldr `0.1.0rc1` treats the names below as its supported pre-release API.
-Behaviour may still change before `1.0`, but changes will be recorded in the
-changelog.
+Baldr `0.1.0` treats the names below as its supported API. Behaviour may still
+change before `1.0`, but changes will be recorded in the changelog.
 
 ## Backend-selecting constructors
 
@@ -40,6 +39,23 @@ before subtracting it.
 The lower-case names in `baldr.scalar` are transitional PBjam compatibility
 aliases.
 
+## Gamma parameter broadcasting
+
+The NumPy Gamma backend accepts array-valued `a` and `scale` parameters. They
+follow NumPy broadcasting rules when evaluated by `pdf`, `logpdf`, `cdf`, `sf`,
+`logcdf`, `logsf`, and `ppf`. The fast path deliberately does not validate
+parameters or mask values outside the support: callers must provide finite
+positive shapes, scales, and density evaluation points.
+
+`Gamma.logpdf_mean(x, mean)` evaluates the equivalent parameterization
+`scale = mean / a` without materializing the scale array. This fused path is
+intended for large periodogram likelihoods such as Skuld's and likewise assumes
+positive, prevalidated inputs.
+
+The dependency-free scalar and JAX Gamma backends currently require scalar
+parameters. In particular, the JAX inverse-CDF solver treats the shape as a
+static, non-differentiated construction argument.
+
 ## Empirical distributions
 
 The optional `baldr.empirical` module exports:
@@ -57,8 +73,9 @@ Fitting always requires NumPy and SciPy. Evaluation can use NumPy or JAX.
 
 Private names beginning with `_`, benchmark internals, cached dataclass fields,
 and the exact root-finding or interpolation algorithms are implementation
-details. Baldr validates distribution parameters during construction but does
-not provide SciPy's full runtime validation or distribution catalogue.
+details. Validation varies by backend and distribution; performance-oriented
+NumPy kernels may trust prevalidated inputs and do not provide SciPy's support
+masking or full runtime validation.
 
 ## Inverse-CDF solvers
 

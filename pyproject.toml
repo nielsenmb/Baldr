@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "baldr"
-version = "0.1.0rc1"
+version = "0.1.0"
 description = "Fast probability distributions for sampling and inference"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Martin Nielsen" }]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

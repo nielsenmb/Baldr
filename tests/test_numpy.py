@@ -111,7 +111,7 @@ def test_all_distributions_expose_tail_methods():
         (
             Gamma(2.5, -1.0, 3.0),
             stats.gamma(2.5, loc=-1.0, scale=3.0),
-            [-2.0, -1.0, 0.0, 5.0],
+            [0.0, 5.0],
         ),
         (
             TruncatedNormal(0.0, 1.5, -1.0, 2.0),
@@ -155,6 +155,59 @@ def test_methods_accept_lists_and_scalar_values():
     distribution = Normal()
     assert distribution.pdf([0.0, 1.0]).shape == (2,)
     assert np.ndim(distribution.pdf(0.0)) == 0
+
+
+def test_gamma_array_parameters_broadcast_and_match_scipy():
+    """Gamma parameters broadcast against each other and observations."""
+
+    shape = np.asarray([[0.5], [2.0], [10.0]])
+    scale = np.asarray([0.25, 1.0, 4.0, 20.0])
+    points = np.asarray([0.1, 1.0, 10.0, 100.0])
+    distribution = Gamma(a=shape, scale=scale)
+    reference = stats.gamma(a=shape, scale=scale)
+
+    assert distribution.mean.shape == (3, 4)
+    assert distribution.median.shape == (3, 4)
+    for method in ("logpdf", "pdf", "cdf", "sf", "logcdf", "logsf"):
+        np.testing.assert_allclose(
+            getattr(distribution, method)(points),
+            getattr(reference, method)(points),
+            rtol=2e-13,
+            atol=2e-14,
+        )
+
+    probabilities = np.asarray([[0.01], [0.5], [0.99]])
+    np.testing.assert_allclose(
+        distribution.ppf(probabilities), reference.ppf(probabilities), rtol=2e-13
+    )
+
+
+def test_gamma_scalar_parameter_properties_remain_scalars():
+    """Array support preserves scalar property return types."""
+
+    distribution = Gamma(a=2.0, scale=3.0)
+    assert isinstance(distribution.a, float)
+    assert isinstance(distribution.scale, float)
+    assert isinstance(distribution.mean, float)
+    assert isinstance(distribution.median, float)
+
+
+def test_gamma_mean_parameterization_matches_scipy():
+    """The fused mean-parameterized kernel matches an equivalent scale."""
+
+    shape = np.asarray([[1.0], [2.5], [10.0]])
+    mean = np.asarray([0.5, 2.0, 8.0, 30.0])
+    points = np.asarray([0.1, 1.0, 10.0, 100.0])
+    actual = Gamma(a=shape).logpdf_mean(points, mean)
+    expected = stats.gamma.logpdf(points, a=shape, scale=mean / shape)
+    np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=2e-14)
+
+
+def test_gamma_trusts_caller_for_parameter_validation():
+    """Gamma avoids eager validation of inputs on its performance path."""
+
+    distribution = Gamma(a=-1.0)
+    assert distribution.a == -1.0
 
 
 def test_discrete_uniform_broadcasts_and_handles_endpoints():

@@ -149,9 +149,9 @@ def Exponential(scale: float = 1.0, *, backend: Backend = "scalar") -> Any:
 
 
 def Gamma(
-    a: float = 1.0,
+    a: Any = 1.0,
     loc: float = 0.0,
-    scale: float = 1.0,
+    scale: Any = 1.0,
     *,
     backend: Backend = "scalar",
 ) -> Any:
@@ -159,12 +159,14 @@ def Gamma(
 
     Parameters
     ----------
-    a : float, default=1.0
-        Positive shape parameter.
+    a : array-like, default=1.0
+        Positive shape parameter. The NumPy backend accepts broadcastable
+        array parameters; scalar and JAX backends currently require scalars.
     loc : float, default=0.0
         Lower support boundary.
-    scale : float, default=1.0
-        Positive scale parameter.
+    scale : array-like, default=1.0
+        Positive scale parameter. The NumPy backend accepts broadcastable
+        array parameters; scalar and JAX backends currently require scalars.
     backend : {"scalar", "numpy", "jax"}, default="scalar"
         Execution backend selected once during construction.
 

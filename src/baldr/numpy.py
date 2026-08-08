@@ -422,45 +422,51 @@ class Gamma(_TailMethods):
 
     Parameters
     ----------
-    a : float, default=1.0
-        Positive shape parameter.
+    a : array-like, default=1.0
+        Positive shape parameter. Array parameters broadcast with ``scale`` and
+        with evaluation points.
     loc : float, default=0.0
         Lower support boundary.
-    scale : float, default=1.0
-        Positive scale parameter.
+    scale : array-like, default=1.0
+        Positive scale parameter. Array parameters broadcast with ``a`` and
+        with evaluation points.
     """
 
-    a: float = 1.0
+    a: Any = 1.0
     loc: float = 0.0
-    scale: float = 1.0
-    _log_normalization: float = field(init=False, repr=False)
-    _inverse_scale: float = field(init=False, repr=False)
+    scale: Any = 1.0
+    _log_normalization: np.ndarray = field(init=False, repr=False)
+    _inverse_scale: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Validate parameters and cache normalization terms."""
+        """Cache terms used by repeated distribution evaluations."""
 
-        a = _positive(self.a, "a")
-        loc = _finite(self.loc, "loc")
-        scale = _positive(self.scale, "scale")
-        object.__setattr__(self, "a", a)
+        a = np.asarray(self.a, dtype=float)
+        loc = float(self.loc)
+        scale = np.asarray(self.scale, dtype=float)
+        scalar_parameters = a.ndim == 0 and scale.ndim == 0
+        object.__setattr__(self, "a", float(a) if scalar_parameters else a)
         object.__setattr__(self, "loc", loc)
-        object.__setattr__(self, "scale", scale)
-        object.__setattr__(self, "_inverse_scale", 1.0 / scale)
+        object.__setattr__(self, "scale", float(scale) if scalar_parameters else scale)
+        object.__setattr__(self, "_inverse_scale", 1.0 / self.scale)
         object.__setattr__(
-            self, "_log_normalization", -float(gammaln(a)) - math.log(scale)
+            self,
+            "_log_normalization",
+            -gammaln(self.a) - self.a * np.log(self.scale),
         )
 
     @property
-    def mean(self) -> float:
+    def mean(self) -> Any:
         """Return the distribution mean."""
 
         return self.loc + self.a * self.scale
 
     @property
-    def median(self) -> float:
+    def median(self) -> Any:
         """Return the distribution median."""
 
-        return float(self.ppf(0.5))
+        value = self.ppf(0.5)
+        return float(value) if np.ndim(value) == 0 else value
 
     def logpdf(self, x: Any, norm: bool = True) -> np.ndarray:
         """Evaluate the log-probability density.
@@ -478,11 +484,17 @@ class Gamma(_TailMethods):
             Log-density at each evaluation point.
         """
 
-        y = (np.asarray(x) - self.loc) * self._inverse_scale
-        value = xlogy(self.a - 1.0, y) - y
+        shifted = np.asarray(x) - self.loc
         if norm:
-            value = value + self._log_normalization
-        return np.where(y >= 0.0, value, -np.inf)
+            value = (
+                (self.a - 1.0) * np.log(shifted)
+                - shifted * self._inverse_scale
+                + self._log_normalization
+            )
+        else:
+            y = shifted * self._inverse_scale
+            value = xlogy(self.a - 1.0, y) - y
+        return value
 
     def pdf(self, x: Any, norm: bool = True) -> np.ndarray:
         """Evaluate the probability density.
@@ -501,6 +513,39 @@ class Gamma(_TailMethods):
         """
 
         return np.exp(self.logpdf(x, norm=norm))
+
+    def logpdf_mean(self, x: Any, mean: Any, norm: bool = True) -> np.ndarray:
+        """Evaluate the log-density using the mean parameterization.
+
+        This is a fused performance path for Gamma likelihoods whose scale is
+        defined by ``mean / a``. Inputs are assumed to be valid and positive.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        mean : array-like
+            Distribution means, broadcastable with ``x`` and ``a``.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        numpy.ndarray
+            Log-density at each evaluation point.
+        """
+
+        x = np.asarray(x)
+        mean = np.asarray(mean)
+        if norm:
+            return (
+                self.a * np.log(self.a)
+                - gammaln(self.a)
+                + (self.a - 1.0) * np.log(x)
+                - self.a * np.log(mean)
+                - self.a * x / mean
+            )
+        return (self.a - 1.0) * np.log(x) - self.a * x / mean
 
     def cdf(self, x: Any) -> np.ndarray:
         """Evaluate the cumulative distribution function.
