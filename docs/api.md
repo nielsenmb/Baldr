@@ -43,14 +43,14 @@ aliases.
 
 The NumPy Gamma backend accepts array-valued `a` and `scale` parameters. They
 follow NumPy broadcasting rules when evaluated by `pdf`, `logpdf`, `cdf`, `sf`,
-`logcdf`, `logsf`, and `ppf`. The fast path deliberately does not validate
-parameters or mask values outside the support: callers must provide finite
-positive shapes, scales, and density evaluation points.
+`logcdf`, `logsf`, and `ppf`. Shapes, scales, and their broadcast compatibility
+are validated once during construction. Evaluation methods do not repeat those
+parameter checks.
 
 `Gamma.logpdf_mean(x, mean)` evaluates the equivalent parameterization
 `scale = mean / a` without materializing the scale array. This fused path is
 intended for large periodogram likelihoods such as Skuld's and likewise assumes
-positive, prevalidated inputs.
+positive, prevalidated evaluation inputs.
 
 The dependency-free scalar and JAX Gamma backends currently require scalar
 parameters. In particular, the JAX inverse-CDF solver treats the shape as a
@@ -73,9 +73,10 @@ Fitting always requires NumPy and SciPy. Evaluation can use NumPy or JAX.
 
 Private names beginning with `_`, benchmark internals, cached dataclass fields,
 and the exact root-finding or interpolation algorithms are implementation
-details. Validation varies by backend and distribution; performance-oriented
-NumPy kernels may trust prevalidated inputs and do not provide SciPy's support
-masking or full runtime validation.
+details. Baldr validates frozen distribution parameters during construction and
+does not repeat parameter checks during evaluation. Performance-oriented kernels
+may trust prevalidated evaluation inputs and do not provide SciPy's full runtime
+validation.
 
 ## Inverse-CDF solvers
 

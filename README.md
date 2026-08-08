@@ -73,9 +73,11 @@ the direct tail methods avoid precision loss from expressions such as
 
 The NumPy Gamma backend accepts array-valued shape and scale parameters. They
 follow normal NumPy broadcasting rules against each other and the evaluation
-points. Its density methods trust the caller to supply valid parameters and
-values. `Gamma.logpdf_mean(x, mean)` provides a fused mean-parameterized kernel
+points. Parameters are validated once when the frozen distribution is created;
+evaluation methods do not repeat those checks. `Gamma.logpdf_mean(x, mean)`
+provides a fused mean-parameterized kernel
 for large periodogram likelihoods without constructing `scale = mean / a`.
+This per-call fast path trusts the caller to supply positive `x` and `mean`.
 Gamma parameters remain scalar in the dependency-free scalar and JAX backends.
 `CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`, and `ppf`
 functions without imposing a backend or performing construction-time numerical

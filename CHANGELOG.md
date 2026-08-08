@@ -5,7 +5,8 @@
 ## 0.1.0 - 2026-08-08
 
 - Support broadcastable array-valued Gamma shape and scale parameters in the
-  NumPy backend, including density, cumulative, tail, and quantile methods.
+  NumPy backend, including one-time construction validation and density,
+  cumulative, tail, and quantile methods.
 - Add a validation-free, mean-parameterized Gamma log-density kernel for fused
   periodogram likelihoods such as Skuld's.
 
