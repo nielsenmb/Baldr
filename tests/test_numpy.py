@@ -157,6 +157,56 @@ def test_methods_accept_lists_and_scalar_values():
     assert np.ndim(distribution.pdf(0.0)) == 0
 
 
+def test_gamma_array_parameters_broadcast_and_match_scipy():
+    """Gamma parameters broadcast against each other and observations."""
+
+    shape = np.asarray([[0.5], [2.0], [10.0]])
+    scale = np.asarray([0.25, 1.0, 4.0, 20.0])
+    points = np.asarray([0.1, 1.0, 10.0, 100.0])
+    distribution = Gamma(a=shape, scale=scale)
+    reference = stats.gamma(a=shape, scale=scale)
+
+    assert distribution.mean.shape == (3, 4)
+    assert distribution.median.shape == (3, 4)
+    for method in ("logpdf", "pdf", "cdf", "sf", "logcdf", "logsf"):
+        np.testing.assert_allclose(
+            getattr(distribution, method)(points),
+            getattr(reference, method)(points),
+            rtol=2e-13,
+            atol=2e-14,
+        )
+
+    probabilities = np.asarray([[0.01], [0.5], [0.99]])
+    np.testing.assert_allclose(
+        distribution.ppf(probabilities), reference.ppf(probabilities), rtol=2e-13
+    )
+
+
+def test_gamma_scalar_parameter_properties_remain_scalars():
+    """Array support preserves scalar property return types."""
+
+    distribution = Gamma(a=2.0, scale=3.0)
+    assert isinstance(distribution.a, float)
+    assert isinstance(distribution.scale, float)
+    assert isinstance(distribution.mean, float)
+    assert isinstance(distribution.median, float)
+
+
+@pytest.mark.parametrize(
+    ("shape", "scale", "message"),
+    [
+        ([1.0, 0.0], 1.0, "a must contain only finite positive values"),
+        (1.0, [1.0, np.inf], "scale must contain only finite positive values"),
+        (np.ones(2), np.ones(3), "a and scale must broadcast together"),
+    ],
+)
+def test_gamma_array_parameter_validation(shape, scale, message):
+    """Gamma rejects invalid or mutually incompatible parameter arrays."""
+
+    with pytest.raises(ValueError, match=message):
+        Gamma(a=shape, scale=scale)
+
+
 def test_discrete_uniform_broadcasts_and_handles_endpoints():
     distribution = DiscreteUniform(2, 6)
     np.testing.assert_allclose(
