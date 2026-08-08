@@ -439,11 +439,20 @@ class Gamma(_TailMethods):
     _inverse_scale: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Cache terms used by repeated distribution evaluations."""
+        """Validate parameters once and cache repeated evaluation terms."""
 
         a = np.asarray(self.a, dtype=float)
-        loc = float(self.loc)
+        loc = _finite(self.loc, "loc")
         scale = np.asarray(self.scale, dtype=float)
+        if not np.all(np.isfinite(a)) or np.any(a <= 0.0):
+            raise ValueError("a must contain only finite values greater than zero")
+        if not np.all(np.isfinite(scale)) or np.any(scale <= 0.0):
+            raise ValueError("scale must contain only finite values greater than zero")
+        try:
+            np.broadcast_shapes(a.shape, scale.shape)
+        except ValueError as error:
+            message = "a and scale must have broadcast-compatible shapes"
+            raise ValueError(message) from error
         scalar_parameters = a.ndim == 0 and scale.ndim == 0
         object.__setattr__(self, "a", float(a) if scalar_parameters else a)
         object.__setattr__(self, "loc", loc)
