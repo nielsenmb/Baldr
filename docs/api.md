@@ -1,8 +1,7 @@
 # Supported API
 
-Baldr `0.1.0rc1` treats the names below as its supported pre-release API.
-Behaviour may still change before `1.0`, but changes will be recorded in the
-changelog.
+Baldr `0.1.0` treats the names below as its supported API. Behaviour may still
+change before `1.0`, but changes will be recorded in the changelog.
 
 ## Backend-selecting constructors
 
@@ -39,6 +38,18 @@ before subtracting it.
 
 The lower-case names in `baldr.scalar` are transitional PBjam compatibility
 aliases.
+
+## Gamma parameter broadcasting
+
+The NumPy Gamma backend accepts array-valued `a` and `scale` parameters. The
+two parameter arrays must broadcast together at construction, and the resulting
+parameter shape must broadcast with inputs passed to `pdf`, `logpdf`, `cdf`,
+`sf`, `logcdf`, `logsf`, and `ppf`. Invalid elements are rejected during
+construction. Scalar Gamma behaviour is unchanged.
+
+The dependency-free scalar and JAX Gamma backends currently require scalar
+parameters. In particular, the JAX inverse-CDF solver treats the shape as a
+static, non-differentiated construction argument.
 
 ## Empirical distributions
 
