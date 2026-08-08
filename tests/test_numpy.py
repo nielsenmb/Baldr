@@ -203,11 +203,22 @@ def test_gamma_mean_parameterization_matches_scipy():
     np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=2e-14)
 
 
-def test_gamma_trusts_caller_for_parameter_validation():
-    """Gamma avoids eager validation of inputs on its performance path."""
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"a": [1.0, 0.0]}, "a"),
+        ({"a": [1.0, np.nan]}, "a"),
+        ({"scale": [1.0, -1.0]}, "scale"),
+        ({"scale": [1.0, np.inf]}, "scale"),
+        ({"loc": np.nan}, "loc"),
+        ({"a": np.ones(2), "scale": np.ones(3)}, "broadcast-compatible"),
+    ],
+)
+def test_gamma_validates_array_parameters_at_construction(kwargs, match):
+    """Gamma rejects invalid frozen parameters before repeated evaluation."""
 
-    distribution = Gamma(a=-1.0)
-    assert distribution.a == -1.0
+    with pytest.raises(ValueError, match=match):
+        Gamma(**kwargs)
 
 
 def test_discrete_uniform_broadcasts_and_handles_endpoints():
