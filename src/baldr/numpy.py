@@ -449,7 +449,7 @@ class Gamma(_TailMethods):
         if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
             raise ValueError("scale must contain only finite positive values")
         try:
-            a, scale = np.broadcast_arrays(a, scale)
+            np.broadcast_shapes(a.shape, scale.shape)
         except ValueError as error:
             raise ValueError("a and scale must broadcast together") from error
         scalar_parameters = a.ndim == 0 and scale.ndim == 0
@@ -458,7 +458,9 @@ class Gamma(_TailMethods):
         object.__setattr__(self, "scale", float(scale) if scalar_parameters else scale)
         object.__setattr__(self, "_inverse_scale", 1.0 / self.scale)
         object.__setattr__(
-            self, "_log_normalization", -gammaln(self.a) - np.log(self.scale)
+            self,
+            "_log_normalization",
+            -gammaln(self.a) - self.a * np.log(self.scale),
         )
 
     @property
@@ -490,11 +492,17 @@ class Gamma(_TailMethods):
             Log-density at each evaluation point.
         """
 
-        y = (np.asarray(x) - self.loc) * self._inverse_scale
-        value = xlogy(self.a - 1.0, y) - y
+        shifted = np.asarray(x) - self.loc
         if norm:
-            value = value + self._log_normalization
-        return np.where(y >= 0.0, value, -np.inf)
+            value = (
+                xlogy(self.a - 1.0, shifted)
+                - shifted * self._inverse_scale
+                + self._log_normalization
+            )
+        else:
+            y = shifted * self._inverse_scale
+            value = xlogy(self.a - 1.0, y) - y
+        return np.where(shifted >= 0.0, value, -np.inf)
 
     def pdf(self, x: Any, norm: bool = True) -> np.ndarray:
         """Evaluate the probability density.
