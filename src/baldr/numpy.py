@@ -422,45 +422,57 @@ class Gamma(_TailMethods):
 
     Parameters
     ----------
-    a : float, default=1.0
-        Positive shape parameter.
+    a : array-like, default=1.0
+        Positive shape parameter. Array parameters broadcast with ``scale`` and
+        with evaluation points.
     loc : float, default=0.0
         Lower support boundary.
-    scale : float, default=1.0
-        Positive scale parameter.
+    scale : array-like, default=1.0
+        Positive scale parameter. Array parameters broadcast with ``a`` and
+        with evaluation points.
     """
 
-    a: float = 1.0
+    a: Any = 1.0
     loc: float = 0.0
-    scale: float = 1.0
-    _log_normalization: float = field(init=False, repr=False)
-    _inverse_scale: float = field(init=False, repr=False)
+    scale: Any = 1.0
+    _log_normalization: np.ndarray = field(init=False, repr=False)
+    _inverse_scale: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Validate parameters and cache normalization terms."""
 
-        a = _positive(self.a, "a")
+        a = np.asarray(self.a, dtype=float)
         loc = _finite(self.loc, "loc")
-        scale = _positive(self.scale, "scale")
-        object.__setattr__(self, "a", a)
+        scale = np.asarray(self.scale, dtype=float)
+        if np.any(~np.isfinite(a)) or np.any(a <= 0.0):
+            raise ValueError("a must contain only finite positive values")
+        if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
+            raise ValueError("scale must contain only finite positive values")
+        try:
+            a, scale = np.broadcast_arrays(a, scale)
+        except ValueError as error:
+            raise ValueError("a and scale must broadcast together") from error
+        scalar_parameters = a.ndim == 0 and scale.ndim == 0
+        object.__setattr__(self, "a", float(a) if scalar_parameters else a)
         object.__setattr__(self, "loc", loc)
-        object.__setattr__(self, "scale", scale)
-        object.__setattr__(self, "_inverse_scale", 1.0 / scale)
+        object.__setattr__(self, "scale", float(scale) if scalar_parameters else scale)
+        object.__setattr__(self, "_inverse_scale", 1.0 / self.scale)
         object.__setattr__(
-            self, "_log_normalization", -float(gammaln(a)) - math.log(scale)
+            self, "_log_normalization", -gammaln(self.a) - np.log(self.scale)
         )
 
     @property
-    def mean(self) -> float:
+    def mean(self) -> Any:
         """Return the distribution mean."""
 
         return self.loc + self.a * self.scale
 
     @property
-    def median(self) -> float:
+    def median(self) -> Any:
         """Return the distribution median."""
 
-        return float(self.ppf(0.5))
+        value = self.ppf(0.5)
+        return float(value) if np.ndim(value) == 0 else value
 
     def logpdf(self, x: Any, norm: bool = True) -> np.ndarray:
         """Evaluate the log-probability density.
