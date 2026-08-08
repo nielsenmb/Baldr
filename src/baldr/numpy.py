@@ -439,19 +439,11 @@ class Gamma(_TailMethods):
     _inverse_scale: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
-        """Validate parameters and cache normalization terms."""
+        """Cache terms used by repeated distribution evaluations."""
 
         a = np.asarray(self.a, dtype=float)
-        loc = _finite(self.loc, "loc")
+        loc = float(self.loc)
         scale = np.asarray(self.scale, dtype=float)
-        if np.any(~np.isfinite(a)) or np.any(a <= 0.0):
-            raise ValueError("a must contain only finite positive values")
-        if np.any(~np.isfinite(scale)) or np.any(scale <= 0.0):
-            raise ValueError("scale must contain only finite positive values")
-        try:
-            np.broadcast_shapes(a.shape, scale.shape)
-        except ValueError as error:
-            raise ValueError("a and scale must broadcast together") from error
         scalar_parameters = a.ndim == 0 and scale.ndim == 0
         object.__setattr__(self, "a", float(a) if scalar_parameters else a)
         object.__setattr__(self, "loc", loc)
@@ -495,14 +487,14 @@ class Gamma(_TailMethods):
         shifted = np.asarray(x) - self.loc
         if norm:
             value = (
-                xlogy(self.a - 1.0, shifted)
+                (self.a - 1.0) * np.log(shifted)
                 - shifted * self._inverse_scale
                 + self._log_normalization
             )
         else:
             y = shifted * self._inverse_scale
             value = xlogy(self.a - 1.0, y) - y
-        return np.where(shifted >= 0.0, value, -np.inf)
+        return value
 
     def pdf(self, x: Any, norm: bool = True) -> np.ndarray:
         """Evaluate the probability density.
@@ -521,6 +513,39 @@ class Gamma(_TailMethods):
         """
 
         return np.exp(self.logpdf(x, norm=norm))
+
+    def logpdf_mean(self, x: Any, mean: Any, norm: bool = True) -> np.ndarray:
+        """Evaluate the log-density using the mean parameterization.
+
+        This is a fused performance path for Gamma likelihoods whose scale is
+        defined by ``mean / a``. Inputs are assumed to be valid and positive.
+
+        Parameters
+        ----------
+        x : array-like
+            Evaluation points.
+        mean : array-like
+            Distribution means, broadcastable with ``x`` and ``a``.
+        norm : bool, default=True
+            Include the normalization constant when true.
+
+        Returns
+        -------
+        numpy.ndarray
+            Log-density at each evaluation point.
+        """
+
+        x = np.asarray(x)
+        mean = np.asarray(mean)
+        if norm:
+            return (
+                self.a * np.log(self.a)
+                - gammaln(self.a)
+                + (self.a - 1.0) * np.log(x)
+                - self.a * np.log(mean)
+                - self.a * x / mean
+            )
+        return (self.a - 1.0) * np.log(x) - self.a * x / mean
 
     def cdf(self, x: Any) -> np.ndarray:
         """Evaluate the cumulative distribution function.
