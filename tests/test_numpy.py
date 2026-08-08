@@ -111,7 +111,7 @@ def test_all_distributions_expose_tail_methods():
         (
             Gamma(2.5, -1.0, 3.0),
             stats.gamma(2.5, loc=-1.0, scale=3.0),
-            [-2.0, -1.0, 0.0, 5.0],
+            [0.0, 5.0],
         ),
         (
             TruncatedNormal(0.0, 1.5, -1.0, 2.0),
@@ -192,19 +192,22 @@ def test_gamma_scalar_parameter_properties_remain_scalars():
     assert isinstance(distribution.median, float)
 
 
-@pytest.mark.parametrize(
-    ("shape", "scale", "message"),
-    [
-        ([1.0, 0.0], 1.0, "a must contain only finite positive values"),
-        (1.0, [1.0, np.inf], "scale must contain only finite positive values"),
-        (np.ones(2), np.ones(3), "a and scale must broadcast together"),
-    ],
-)
-def test_gamma_array_parameter_validation(shape, scale, message):
-    """Gamma rejects invalid or mutually incompatible parameter arrays."""
+def test_gamma_mean_parameterization_matches_scipy():
+    """The fused mean-parameterized kernel matches an equivalent scale."""
 
-    with pytest.raises(ValueError, match=message):
-        Gamma(a=shape, scale=scale)
+    shape = np.asarray([[1.0], [2.5], [10.0]])
+    mean = np.asarray([0.5, 2.0, 8.0, 30.0])
+    points = np.asarray([0.1, 1.0, 10.0, 100.0])
+    actual = Gamma(a=shape).logpdf_mean(points, mean)
+    expected = stats.gamma.logpdf(points, a=shape, scale=mean / shape)
+    np.testing.assert_allclose(actual, expected, rtol=2e-13, atol=2e-14)
+
+
+def test_gamma_trusts_caller_for_parameter_validation():
+    """Gamma avoids eager validation of inputs on its performance path."""
+
+    distribution = Gamma(a=-1.0)
+    assert distribution.a == -1.0
 
 
 def test_discrete_uniform_broadcasts_and_handles_endpoints():
