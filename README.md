@@ -53,10 +53,11 @@ from baldr import Gamma, Normal
 scalar_prior = Normal(loc=0.0, scale=1.0)
 array_prior = Normal(loc=0.0, scale=1.0, backend="numpy")
 jax_prior = Normal(loc=0.0, scale=1.0, backend="jax")
-gamma_prior = Gamma(a=2.0, scale=3.0)
+gamma_prior = Gamma(a=[1.0, 2.0, 4.0], scale=[3.0, 2.0, 1.0], backend="numpy")
 
 x = scalar_prior.ppf(0.95)
 log_density = array_prior.logpdf([x, 0.0])
+gamma_log_density = gamma_prior.logpdf([0.5, 1.0, 2.0])
 ```
 
 Backend selection happens once during construction, so repeated evaluations do
@@ -69,6 +70,11 @@ power-law, truncated sine, and discrete uniform distributions. Distributions exp
 `sf`, `logcdf`, and `logsf` in addition to `pdf`, `logpdf`, `cdf`, and `ppf`;
 the direct tail methods avoid precision loss from expressions such as
 `1 - cdf(x)`.
+
+The NumPy Gamma backend accepts array-valued shape and scale parameters. They
+follow normal NumPy broadcasting rules against each other and the evaluation
+points. Gamma parameters remain scalar in the dependency-free scalar and JAX
+backends.
 `CallableDistribution` adapts existing `pdf`, `logpdf`, `cdf`, and `ppf`
 functions without imposing a backend or performing construction-time numerical
 integration.
